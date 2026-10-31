@@ -2,12 +2,15 @@
 
 面向 GBA《火焰纹章》官方作品及改版的 Android 双屏增强游玩项目。上屏运行原游戏，下屏提供战局信息、军团与背包管理、培养规划、章节攻略和结构研究工具。
 
-主要验收设备为 AYN Thor 16GB＋1TB。项目方案于 **2026-11-01** 确认，当前处于规划落地阶段，尚无可运行应用或已验证的游戏支持。
+主要验收设备为 AYN Thor 16GB＋1TB。项目方案于 **2026-11-01** 确认，当前已建立 M0 Android 工程和普通 GBA 宿主，正在完成基础验证。火纹信息面板、背包命令和研究编辑尚未接入；可运行 ROM 不等于已完成火纹适配。
 
 ## 项目文档
 
 - [已确认的项目方案](docs/PROJECT_PLAN.md)：产品范围、双屏交互、模块边界、存档与实验分支、适配顺序及验收标准。
-- [分阶段实施任务](docs/IMPLEMENTATION_TASKS.md)：M0—M6 的依赖、任务与完成条件；所有实现任务当前均未开始。
+- [分阶段实施任务](docs/IMPLEMENTATION_TASKS.md)：M0—M6 的依赖、任务与完成条件。
+- [构建与本地验证](docs/BUILDING.md)：SDK、构建、文件登记、测试与应用存储约定。
+- [M0 目标文件](docs/M0_TARGETS.md)：本次七份文件的指纹、头部信息及验证边界。
+- [M0 验证记录](docs/M0_VALIDATION.md)：已通过的检查与 Thor 实机待验项目。
 - [技术依据与核验边界](docs/TECHNICAL_EVIDENCE.md)：pokedaisy、火纹结构资料、已有实现及《天地之剑》的来源依据。
 - [协作与交付约定](AGENTS.md)：阶段、功能与修复完成后的验证、提交和推送规则。
 
@@ -33,10 +36,10 @@ M1 是内部技术验证，M3 是改版接入验证；M5 通过完整验收后�
 
 采用 Kotlin／Jetpack Compose、C/C++ JNI 和 mGBA。选择性复用 [PokeDaisy](https://github.com/lidor30/pokedaisy) 的通用实现和设备经验，重新建立火纹数据模型、界面与操作状态机。
 
-项目按已确认的 GPLv3 开源路线推进。M0 落实 LICENSE、NOTICE、第三方清单及复用来源；复用 PokeDaisy 时按其声明保留以下致谢，并在应用的 About／credits 中展示：
+项目按 GPLv3 开源，已包含 LICENSE、NOTICE、[第三方清单及复用来源](third_party/README.md)，应用内提供“关于与开源许可”。保留以下致谢：
 
 > Based on PokeDaisy by Lidor Itzhari - https://github.com/lidor30/pokedaisy
 
 ## 当前实施输入
 
-M0 需要登记用于验收的 FE8 文件，以及实际准备游玩的《天地之剑》中文文件。ROM 指纹、运行时布局和所需 FE7 基线由工程核验确定；后续按测试场景补充本地存档。游戏文件不随项目分发。
+已登记 FE8 日版与中文语音版、FE7 日版与汉化版、指定《天地之剑》及 FE6 的本地文件。FE8 两份文件均为 `BE8J`，需要核验日版及中文构建布局。烈火 Plus 因文件头校验不符未登记。游戏文件、存档和本地路径不随项目分发。Thor 实机验收完成前，M0 不标记为整阶段通过。

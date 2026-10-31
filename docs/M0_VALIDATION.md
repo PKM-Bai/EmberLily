@@ -1,0 +1,69 @@
+# M0 工程与验证记录
+
+日期：2026-11-01（Asia/Shanghai）。本阶段已建立普通 GBA 宿主与目标登记；**M0 尚未整阶段验收，Thor 实机项目仍待完成**。本记录不把核心运行结果当作火纹语义适配结论。
+
+## 环境与交付
+
+| 项目 | 实际环境 |
+| --- | --- |
+| 主机构建 | Windows；Microsoft JDK 21.0.8；Gradle 8.10.2 |
+| Android 构建 | AGP 8.5.2、Kotlin 1.9.24、compile/target SDK 34、min SDK 26 |
+| Native | NDK 28.2.13676358、CMake 3.22.1；arm64-v8a 与 x86_64 均构建成功 |
+| 核心 | mGBA 0.10.5，`26b7884bc25a5933960f3cdcd98bac1ae14d42e2` |
+| 运行验证 | Android Emulator `Medium_Phone_API_35`，Android 15/API 35，x86_64 |
+| 目标设备 | AYN Thor 16GB＋1TB；本次 ADB 未检测到物理设备，未执行实机验收 |
+| 安装包 | `app/build/outputs/apk/debug/app-debug.apk`，`0.0.1-m0` 调试版 |
+
+模拟器内时钟与主机存在偏差；日志原始时间保留，测试归属以本记录日期和文件指纹为准。
+
+## 已完成的基础能力
+
+- Android Kotlin/Compose 工程、精简 GBA JNI 与固定版本 mGBA 子模块。
+- 系统文件选择器导入，校验后复制到私有目录，以 SHA-256 区分不同构建。
+- 唯一模拟线程执行帧推进、音视频、按键、内存读取和存储任务；暂停与恢复。
+- 默认屏游戏画面和副屏 Presentation，单屏回退布局；触摸与实体输入按来源管理。
+- 每个 ROM 的主进度与实验分支目录隔离；恢复点包含核心状态、电池存档和 RTC。
+- GPLv3、PokeDaisy 致谢、mGBA/依赖许可证及应用内查看入口。实际编入的 mGBA third-party 源码为 inih 与 blip_buf，许可文本已包含。
+
+## 自动验证
+
+| 检查 | 结果 | 范围 |
+| --- | --- | --- |
+| ROM 登记 Python 测试 | 9/9 通过 | 有效/无效头部、声明角色、只读源文件、重复登记、原子写入失败保留旧登记 |
+| Kotlin JVM 测试 | 11/11 通过 | SessionStore 9 项；GameInput 2 项，覆盖恢复点隔离、输入来源互不释放与设备移除 |
+| NativeCoreSmokeTest | 5/5 通过 | 原创程序音视频、按键、EWRAM、即时状态、SRAM、分支隔离、跨核心路径及篡改身份拒绝 |
+| LocalTargetSmokeTest | 1 项参数化流程通过，6/6 输入通过 | 每份 ROM 480 帧；非单色画面；完整 256 KiB EWRAM 保存恢复、关闭重开、原文件不变 |
+| 构建 | 通过 | Debug APK、测试 APK、双 ABI JNI 和单元测试 |
+
+原创程序来源为 `scripts/create_smoke_rom.py`，SRAM 版 SHA-256 为 `2444a7fd33bfe199a4607f7fc7bde3fe66ea94ebc6373fb45919a7e9e1556ec4`。它主动写 SRAM，保存后核验 32 KiB 电池文件内容，再验证恢复和实验分支写入不会改动主分支。没有使用商业游戏素材作为可分发夹具。
+
+本地测试输入与 [M0 目标清单](M0_TARGETS.md) 的 R01—R06 一致；R07 因文件头校验不符未运行。R01 的 FE6 核心测试不改变其 M6 适配顺序。目标 ROM 测试没有验证章节、单位、背包、汉化内容、游戏菜单主动保存或完整流程；这些仍待对应里程碑和实机场景核验。
+
+本地原始记录位于 `.local/build-final.log`、`.local/native-smoke-result.txt`、`.local/target-smoke-result.txt`、`.local/target-smoke.log` 和 Gradle 测试报告，不提交游戏数据或本机路径。
+
+## 宿主交互验证
+
+在上述 Android 模拟器上实际操作并观察：
+
+- 系统文件选择器导入原创程序、游戏画面与控制区绘制、保存/恢复、创建实验、返回主进度、后台返回及最近会话恢复通过。
+- About 对话框实际显示 PokeDaisy 致谢与许可证文本。
+- 手动保存后 `checkpoint.state` 与 `resume.state` 内容一致；继续运行后切后台，续玩文件哈希改变，手动恢复点哈希保持不变。记录在 `.local/checkpoint-before.txt` 与 `.local/checkpoint-after.txt`。
+- 使用 960×640/160 dpi 虚拟副屏验证：从副屏启动 Router 和直接冷启动 MainActivity，最终主窗口都位于 display 0，Presentation 位于副屏；没有因路由结束玩家任务。移除副屏后单屏回退正常。测试结束已移除临时虚拟副屏配置。
+- 这些窗口测试使用 Android 虚拟显示设备，不代表已验证 Thor 的实体按键路由、触摸焦点与休眠行为。
+
+## 发现并修复的问题
+
+1. **小型 multiboot 输入的状态归属。** 初版依赖核心 cartridge CRC，两个不同的合成文件可能共用状态。红测试稳定复现；改为完整原文件 SHA-256、大小与核心版本/提交绑定的 `ELSTATE2`，原失败用例转绿。旧测试格式 v1 明确拒绝。
+2. **单屏控制区被游戏清屏覆盖。** 实际截图出现黑背景配浅色主题黑文字。FrameBuffer 对自身视口显式裁剪并恢复 Canvas，修复后同一背景点由 RGB `(0,0,0)` 变为 `(255,251,254)`，文字和按钮正常可读。
+3. **已关闭或恢复失败的核心生命周期。** 宿主先撤销句柄再关闭；恢复与回滚均失败时不将不确定状态覆盖旧恢复点。关闭后句柄拒绝继续使用，重复关闭可安全返回。
+4. **自动续玩覆盖手动恢复点。** 将 `resume.state` 与 `checkpoint.state` 分开。后台和切换只更新续玩状态，手动回退位置保留；新实验的恢复点来自当前分支起点。新增存储回归覆盖这两种语义。
+5. **副屏冷启动关闭自身任务。** `singleTask` Activity 自重启后移除任务会导致应用退出。改为独立组件与 task affinity 的 DisplayRouterActivity，将玩家 Activity 启动到默认屏并仅结束路由自身。Android 不允许在默认屏使用 Presentation，最终实现只向副屏创建 Presentation；默认屏限制已对照本机 Android SDK 的 `Presentation.java` 核实，并通过上述双启动路径复测。
+
+## M0 仍待完成
+
+- Thor 真实上下屏分配、从两屏启动、触摸后实体按键、持键时切换与设备变化。
+- Thor 休眠/唤醒、退出恢复、渲染重绑和持续游玩的音视频稳定性；未给出未测量的延迟/FPS 结论。
+- 真实 FE 游戏菜单主动保存、推进关卡后的分支往返与异常退出恢复；自动诊断程序不替代这些游戏流程。
+- M1 以精确 FE8 构建建立语义 profile。当前 R03/R04 均为 `BE8J`，需先核验日版及中文构建，不能直接采用 FE8U 地址。天地之剑的最终布局与 FE7 基线在 M2/M3 核验。
+
+完成以上设备验收后再判定 M0 退出；随后进入 FE8 最小语义读写闭环。

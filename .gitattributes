@@ -1,0 +1,6 @@
+# Keep the Unix entry point executable with Unix line endings on every host.
+gradlew text eol=lf
+
+# Preserve upstream license texts verbatim, including their original whitespace.
+LICENSE -whitespace
+app/src/main/assets/licenses/*.txt -whitespace

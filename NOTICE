@@ -1,0 +1,50 @@
+EmberLily
+Copyright (C) 2026 EmberLily contributors
+
+EmberLily is free software under the GNU General Public License, version 3.
+See LICENSE for the full terms. It is provided without warranty.
+
+Based on PokeDaisy by Lidor Itzhari - https://github.com/lidor30/pokedaisy
+
+PokeDaisy: Copyright (C) 2026 Lidor Itzhari.
+Reference revision: 6fcb8b50f71c214b13149ea1adb7b7f82c1a4e6f.
+
+PokeDaisy's additional attribution term (GNU GPL version 3, section 7(b)):
+Anyone conveying PokeDaisy or a work based on it must preserve the attribution
+above in NOTICE, in README or equivalent documentation, and in the work's
+credits, About screen or other Appropriate Legal Notices where present.
+
+SELECTIVE REUSE AND IMPLEMENTATION REFERENCES
+
+- gradlew was copied from PokeDaisy's checkout. The Windows launcher is new;
+  gradle/wrapper/gradle-wrapper.jar is the official wrapper JAR packaged in
+  Gradle 8.10.2. Gradle wrapper code is licensed under Apache License 2.0.
+- The Android/Gradle dependency versions and minimal mGBA build configuration
+  follow the working PokeDaisy build. This project omits its DS, Pokemon,
+  achievements, network and analytics integrations.
+- The host implementation is independently scoped for GBA. Its design follows
+  PokeDaisy's documented frame-boundary memory capture, emulator-thread ownership,
+  Presentation display handling, input release on focus changes, and native
+  framebuffer lifetime rules. Relevant upstream files are EmulatorEngine.kt,
+  EmulatorView.kt, DualScreenPresentation.kt, Screens.kt, GbaInput.kt,
+  companion/data/MemoryReader.kt and app/src/main/cpp/pokedaisy_jni.c.
+  Exact code excerpts adapted in this checkout must also retain their source
+  attribution in the implementing file or the project's reuse register.
+
+THIRD-PARTY COMPONENTS
+
+- mGBA 0.10.5, Copyright (c) 2013-2022 Jeffrey Pfau and contributors.
+  Source: https://github.com/mgba-emu/mgba/tree/0.10.5
+  Mozilla Public License 2.0. Source is pinned as third_party/mgba.
+- blip_buf, Copyright (C) 2003-2009 Shay Green.
+  Included with mGBA; GNU Lesser General Public License 2.1 or later.
+- inih, Copyright (c) 2009 Ben Hoyt.
+  Included with mGBA; BSD 3-Clause license.
+- AndroidX and Jetpack Compose, The Android Open Source Project contributors;
+  Kotlin and kotlinx.coroutines, JetBrains and contributors.
+  Apache License 2.0.
+- Gradle wrapper, Gradle contributors. Apache License 2.0.
+
+The application includes the license texts in assets/licenses/ and displays a
+combined notice through its About screen. third_party/README.md records the
+source locations. No game ROMs, game artwork, fonts or BIOS are bundled.

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EmberLily</string>
+    <string name="about_title">关于与开源许可</string>
+    <string name="pokedaisy_attribution">Based on PokeDaisy by Lidor Itzhari - https://github.com/lidor30/pokedaisy</string>
+</resources>
