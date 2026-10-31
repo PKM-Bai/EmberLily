@@ -1,0 +1,41 @@
+# Local SDK, IDE, Gradle and native build state.
+local.properties
+.gradle/
+.idea/
+*.iml
+**/build/
+**/.cxx/
+**/.externalNativeBuild/
+
+# Private verification inputs, game files, saves and experiment outputs.
+.local/
+roms/
+saves/
+samples/local/
+*.gba
+*.gb
+*.gbc
+*.nds
+*.sav
+*.srm
+*.ss
+*.state
+*.state[0-9]*
+
+# Deliberately authored, redistributable test fixtures may be tracked here.
+# Do not ignore *.bin globally: synthetic decoder fixtures are source inputs.
+!**/src/test/resources/synthetic/**
+!tests/fixtures/synthetic/**
+
+# Packages, signing material and machine-local diagnostics.
+*.apk
+*.aab
+*.jks
+*.keystore
+keystore.properties
+*.hprof
+hs_err_pid*
+.DS_Store
+Thumbs.db
+__pycache__/
+.impeccable/review/
