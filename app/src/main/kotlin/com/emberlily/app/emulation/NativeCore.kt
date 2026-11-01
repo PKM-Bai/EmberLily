@@ -18,6 +18,9 @@ object NativeCore {
     /** Uses GBA key bits: A, B, Select, Start, Right, Left, Up, Down, R, L. */
     external fun runFrame(handle: Long, keys: Int)
 
+    /** Releases keys without advancing a frame; returns the previous mask for verification. */
+    external fun releaseKeys(handle: Long): Int
+
     /** Copies 240 × 160 opaque Android ARGB pixels; false until a frame has run. */
     external fun copyFrame(handle: Long, pixels: IntArray): Boolean
 

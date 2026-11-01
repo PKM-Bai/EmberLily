@@ -35,6 +35,8 @@ data class FeLayout(
     val cursorOffset: Int = 0x14,
     val huffmanBaseLiteral: Long = 0x080006E0,
     val huffmanRootLiteral: Long = 0x080006DC,
+    val convoyAddress: Long? = null,
+    val convoyCapacity: Int = 100,
 ) {
     data class UnitRegion(val address: Long, val count: Int, val firstSlot: Int)
     fun unitAddress(slot: Int): Long? = units.singleOrNull { slot in it.firstSlot until it.firstSlot + it.count }
@@ -61,6 +63,7 @@ object FeLayouts {
         PlayerIdleContract(Fe8JLayout.PLAYER_IDLE_CURSOR, Fe8JLayout.PLAYER_IDLE_CALLBACK,
             setOf(0x085B98A0L, 0x085B98D8L, 0x085C3248L)),
         PlayerMovementContract(Fe8JLayout.PLAYER_MOVEMENT_CURSOR, Fe8JLayout.PLAYER_MOVEMENT_CALLBACK),
+        convoyAddress = Fe8JLayout.CONVOY,
     )
 
     // R02/R06 ROM literals and their own live process trees were checked independently.
@@ -75,5 +78,6 @@ object FeLayouts {
         idle = PlayerIdleContract(0x08C026A0, 0x0801C625,
             setOf(0x08BFFF78L, 0x08BFFE90L, 0x08BFFEF8L, 0x08BFFF58L, 0x08C028E8L)),
         movement = PlayerMovementContract(0x08C026E0, 0x0801CACD),
+        convoyAddress = 0x0203A71C,
     )
 }

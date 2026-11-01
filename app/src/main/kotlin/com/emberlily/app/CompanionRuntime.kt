@@ -120,13 +120,14 @@ class CompanionRuntime(private val postOwner: (() -> Unit) -> Unit) : AutoClosea
         return FeDecoder(current.profile, current.catalog).decode(snapshot)
     }
 
-    fun sample(handle: Long, frame: Long) {
-        if (base == null || closed.get()) return
+    fun sample(handle: Long, frame: Long): MemorySnapshot? {
+        if (base == null || closed.get()) return null
         val start = System.nanoTime()
         val snapshot = capture(handle, frame)
         captureCount++
         if (queued.getAndSet(Job(snapshot, adapter, start, (System.nanoTime() - start) / 1e6)) != null) discarded++
         startWorker()
+        return snapshot
     }
 
     private fun startWorker() {

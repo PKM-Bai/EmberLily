@@ -158,17 +158,22 @@ class MainActivity : ComponentActivity(), DisplayManager.DisplayListener, InputM
     @Composable private fun Controls(state: PlayerState, modifier: Modifier) {
         var tab by remember { mutableIntStateOf(0) }
         val companion by player.companion.collectAsState()
+        val inventoryUi = rememberInventoryUiState(companion)
         Column(modifier) {
             if (state.error != null) Text(state.error, color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.bodyMedium)
             if (state.loaded) TabRow(selectedTabIndex = tab) {
                 Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("战场") })
-                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("会话") })
-                Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("研究") })
+                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("背包") })
+                Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("会话") })
+                Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("研究") })
             }
             if (state.loaded && tab == 0) CompanionPanel(companion, player::pinUnit, Modifier.fillMaxWidth().weight(1f))
-            else if (state.loaded && tab == 2) ResearchPanel(state, companion, player::fork, player::editHp, player::restoreResearch,
+            else if (state.loaded && tab == 1) InventoryPanel(companion, inventoryUi, Modifier.fillMaxWidth().weight(1f), state.inventoryMessage) {
+                PrepTradePanel(state, companion, inventoryUi, player::tradeItems)
+            }
+            else if (state.loaded && tab == 3) ResearchPanel(state, companion, player::fork, player::editHp, player::restoreResearch,
                 Modifier.fillMaxWidth().weight(1f))
             else SessionControls(state, Modifier.fillMaxWidth().weight(1f))
         }

@@ -4,6 +4,18 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class GameInputTest {
+    @Test fun transientPhysicalInputInvalidatesAnAutomatedCommand() {
+        val input = GameInput()
+        val before = input.revision()
+        assertEquals(before, input.idleRevision())
+        input.set("key:7:96", 1)
+        assertEquals(null, input.idleRevision())
+        input.set("key:7:96", 0)
+        assertEquals(0, input.keys())
+        assertEquals(before + 2, input.revision())
+        input.set("key:7:96", 0)
+        assertEquals(before + 2, input.revision())
+    }
     @Test fun releasingOneSourcePreservesAnotherHeldKey() {
         val input = GameInput()
         input.set("physical", 1)

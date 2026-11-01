@@ -6,7 +6,31 @@ data class FeName(val textId: Int, val text: String?, val note: String? = null) 
     val display: String get() = text ?: "名称 #${textId.toString(16).uppercase().padStart(4, '0')}"
 }
 data class UnitIdentity(val context: SnapshotStamp, val chapter: Int, val slot: Int, val generation: Long, val characterAddress: Long)
-data class FeItemSlot(val slot: Int, val raw: Int, val itemId: Int, val uses: Int, val name: FeName, val maxUses: Int?)
+data class FeItemSlot(val slot: Int, val raw: Int, val itemId: Int, val uses: Int, val name: FeName, val maxUses: Int?,
+    val details: FeItemDetails? = null)
+
+/** ROM base values, not a unit's effective battle forecast or equip permission. */
+data class FeItemDetails(
+    val category: Int,
+    val attributes: Long,
+    val might: Int,
+    val hit: Int,
+    val weight: Int,
+    val critical: Int,
+    val encodedRange: Int,
+) {
+    val isWeapon: Boolean get() = attributes and 1L != 0L
+    val isStaff: Boolean get() = attributes and 4L != 0L
+    val unbreakable: Boolean get() = attributes and 8L != 0L
+    // 0xF encodes dynamic ranges; do not present the nibble as a literal 15 tiles.
+    private val fixedRange: Boolean get() = (encodedRange ushr 4) in 1..14 &&
+        (encodedRange and 15) in (encodedRange ushr 4)..14
+    val minRange: Int? get() = (encodedRange ushr 4).takeIf { fixedRange }
+    val maxRange: Int? get() = (encodedRange and 15).takeIf { fixedRange }
+}
+
+/** All physical slots, including empty ones. Presence never grants normal supply access. */
+data class FeConvoySnapshot(val capacity: Int, val items: List<FeItemSlot>)
 data class FeUnit(
     val identity: UnitIdentity,
     val slot: Int,
@@ -46,6 +70,8 @@ data class FeBattleSnapshot(
     val selectedSlot: Int? = null,
     val mapProcLock: Int? = null,
     val activeProcScripts: Set<Long> = emptySet(),
+    /** Null means not verified/readable in this snapshot, not an empty warehouse. */
+    val convoy: FeConvoySnapshot? = null,
 ) {
     val focusedUnit: FeUnit? get() = cursor?.let { position -> units.firstOrNull {
         it.x == position.x && it.y == position.y && it.state and (0x4L or 0x8L or 0x20L) == 0L

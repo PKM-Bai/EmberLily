@@ -19,13 +19,14 @@ class RomProfilesTest {
     @Test fun capabilitiesFollowEvidenceForEachExactBuildInsteadOfInheritingTheHeader() {
         assertEquals(setOf(FeCapability.ITEM_DATA, FeCapability.TEXT_NAMES),
             FeCapability.entries.filter(RomProfiles.fe8j::supports).toSet())
-        assertEquals(setOf(FeCapability.CHAPTER_AND_CURSOR, FeCapability.LIVE_UNITS, FeCapability.ITEM_DATA, FeCapability.RESEARCH_EDIT),
+        assertEquals(setOf(FeCapability.CHAPTER_AND_CURSOR, FeCapability.LIVE_UNITS, FeCapability.ITEM_DATA,
+            FeCapability.NORMAL_INVENTORY, FeCapability.RESEARCH_EDIT),
             FeCapability.entries.filter(RomProfiles.fe8jVoice::supports).toSet())
         assertFalse(RomProfiles.fe8jVoice.supports(FeCapability.TEXT_NAMES))
         assertFalse(RomProfiles.fe8j.supports(FeCapability.RESEARCH_EDIT))
         assertTrue(RomProfiles.fe8jVoice.supports(FeCapability.RESEARCH_EDIT))
         for (profile in RomProfiles.all) {
-            assertFalse(profile.supports(FeCapability.NORMAL_INVENTORY))
+            assertEquals(profile.identity.sha256 == RomProfiles.FE8J_VOICE_SHA256, profile.supports(FeCapability.NORMAL_INVENTORY))
             assertTrue(profile.capabilities.values.all { it.state != SupportState.AVAILABLE || !it.evidence.isNullOrBlank() })
         }
     }

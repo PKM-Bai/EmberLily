@@ -51,6 +51,7 @@ class Fe8LocalRomTest {
         write(unit + 0x12, 16, 1)
         write(unit + 0x13, 13, 1)
         write(unit + 0x1E, 0x2E01, 2)
+        write(Fe8JLayout.CONVOY + 99 * 2L, 0x0C01, 2)
         write(Fe8JLayout.ACTIVE_UNIT, unit)
         val decoder = Fe8Decoder(profile, catalog)
         val decoded = decoder.decode(capture())
@@ -62,6 +63,10 @@ class Fe8LocalRomTest {
         assertNull(decoded.selectedUnit) // An active-unit pointer alone does not establish a current selection.
         assertEquals(13, decoded.focusedUnit?.hp)
         assertEquals(1, decoded.units.single().items.first().itemId)
+        assertEquals(100, decoded.convoy?.capacity)
+        assertEquals(100, decoded.convoy?.items?.size)
+        assertEquals(0x0C01, decoded.convoy?.items?.last()?.raw)
+        assertEquals(99, decoded.convoy?.items?.last()?.slot)
         val roundTrip = SnapshotCodec.decode(SnapshotCodec.encode(capture()), profile.identity.sha256)
         assertEquals(decoded, decoder.decode(roundTrip))
         assertEquals(0L, decoder.decodeRaw(capture()).units.single().identity.generation)

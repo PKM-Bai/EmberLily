@@ -80,6 +80,8 @@ adb shell am instrument -w -e class com.emberlily.app.emulation.NativeCoreSmokeT
 
 ## M1 快照、实验与本地验证
 
+0.0.6 新增副屏“背包”页。物品表和仓库读取依据见 [背包读取证据](INVENTORY_READING_EVIDENCE.md)，正常准备交换及界面验证见 [背包验证](INVENTORY_VALIDATION.md)。R04 原生准备交换集成测试需额外部署 `files/local-probes/r04-wide-agent-worldmap-prep-trade.state`（指纹见验证记录），使用 `adb -s <独立测试设备> shell am instrument -w -e class com.emberlily.app.LocalPrepTradeTest -e prepTradeTest true com.emberlily.app.test/androidx.test.runner.AndroidJUnitRunner`。该测试仅操作 cache 内的独立核心和副本；不要将常规测试安装流程指向用户正在游玩的设备。
+
 R04 的战场页显示光标单位及物品，支持固定另一个单位对比。中文名称尚未建立自定义字库映射，使用文本 ID 表示；R03 实时战局未验收，界面不会套用 R04 的运行验证。研究页先创建独立实验，再在玩家回合的空闲地图编辑 HP（1..最大 HP）。选择移动、事件或动画期间会拒绝写入；成功后保持暂停，并提示前后值。恢复入口还原 `research-before.state`，不覆盖用户手动的 `checkpoint.state`。
 
 研究写入使用候选恢复点和 `research-incomplete` 标记；未完成事务在下次打开时优先恢复候选／编辑前状态，再更新续玩文件。`research.jsonl` 的 `unit_hp` / `stage=memory_applied` 记录实际应用过的字段变化，不代表此后从未回滚；恢复单独记录。日志故障不能阻止数据恢复，日志不是当前状态的真值。

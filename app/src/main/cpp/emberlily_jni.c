@@ -447,6 +447,19 @@ JNIEXPORT void JNICALL JNI_METHOD(runFrame)(JNIEnv* env, jobject self, jlong han
     pthread_mutex_unlock(&sessions_lock);
 }
 
+JNIEXPORT jint JNICALL JNI_METHOD(releaseKeys)(JNIEnv* env, jobject self, jlong handle) {
+    (void)self;
+    pthread_mutex_lock(&sessions_lock);
+    struct Session* s = find_session(env, handle);
+    jint previous = 0;
+    if (s) {
+        previous = (jint)s->core->getKeys(s->core);
+        s->core->setKeys(s->core, 0);
+    }
+    pthread_mutex_unlock(&sessions_lock);
+    return previous;
+}
+
 JNIEXPORT jboolean JNICALL JNI_METHOD(copyFrame)(JNIEnv* env, jobject self, jlong handle, jintArray pixels) {
     (void)self;
     pthread_mutex_lock(&sessions_lock);

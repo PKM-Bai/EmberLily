@@ -57,11 +57,16 @@ class FeDecoder(private val profile: RomProfile, private val catalog: FeRomCatal
             val processes = FeProcesses.read(snapshot, layout) { it % 4L == 0L && catalog.contains(it, 8) }
             val scripts = Collections.unmodifiableSet(processes.map { it.script }.toSet())
             val map = processes.singleOrNull { it.script == layout.mapTaskScript }
-                ?: return FeBattleSnapshot(stamp, FeScene.UNAVAILABLE, "当前不在已确认的战场场景", activeProcScripts = scripts)
-            val width = snapshot.u16(layout.mapSize)
-            val height = snapshot.u16(layout.mapSize + 2)
-            require(width in 1..255 && height in 1..255) { "地图尺寸无效" }
-            for (layer in listOf(layout.mapUnitRows, layout.mapTerrainRows)) {
+            // Preparation can be opened from the world map, where battle row tables are stale.
+            // Only the independently verified preparation-trade process establishes this context.
+            val preparation = PrepTradeCommands.inspect(snapshot)
+            if (map == null && preparation == null) {
+                return FeBattleSnapshot(stamp, FeScene.UNAVAILABLE, "当前不在已确认的战场或准备交换场景", activeProcScripts = scripts)
+            }
+            val width = if (preparation == null) snapshot.u16(layout.mapSize) else 0
+            val height = if (preparation == null) snapshot.u16(layout.mapSize + 2) else 0
+            if (preparation == null) require(width in 1..255 && height in 1..255) { "地图尺寸无效" }
+            if (preparation == null) for (layer in listOf(layout.mapUnitRows, layout.mapTerrainRows)) {
                 val rows = snapshot.u32(layer)
                 require(rows % 4L == 0L && rows in 0x02000000L..0x0203FFFFL && snapshot.contains(rows, height * 4)) {
                     "地图行表无效"
@@ -111,14 +116,22 @@ class FeDecoder(private val profile: RomProfile, private val catalog: FeRomCatal
             // limits this to the verified selector rather than claiming every action/menu mode.
             val player = processes.singleOrNull { it.script == layout.playerPhaseScript }
             val movement = layout.movement
-            val selectingMovement = movement != null && phase == 0 && snapshot.u8(layout.bmState + 1) == 0 &&
+            val selectingMovement = preparation == null && movement != null && phase == 0 && snapshot.u8(layout.bmState + 1) == 0 &&
                 snapshot.u8(layout.bmState + 4) and 2 != 0 && player != null && player.lock == 0 &&
                 snapshot.u32(player.address + 4) == movement.cursor &&
                 snapshot.u32(player.address + 0x0C) == movement.callback
-            FeBattleSnapshot(stamp, FeScene.MAP, chapter = chapter, turn = turn, phase = phase, cursor = cursor,
-                mapWidth = width, mapHeight = height, units = Collections.unmodifiableList(units),
+            val convoy = layout.convoyAddress?.let { address ->
+                require(layout.convoyCapacity in 1..100 && snapshot.contains(address, layout.convoyCapacity * 2)) { "仓库内存无效" }
+                FeConvoySnapshot(layout.convoyCapacity, Collections.unmodifiableList((0 until layout.convoyCapacity).map {
+                    catalog.item(snapshot.u16(address + it * 2L), it)
+                }))
+            }
+            FeBattleSnapshot(stamp, if (preparation != null) FeScene.PREPARATION else FeScene.MAP,
+                chapter = chapter, turn = turn, phase = phase, cursor = cursor,
+                mapWidth = width.takeIf { preparation == null }, mapHeight = height.takeIf { preparation == null },
+                units = Collections.unmodifiableList(units),
                 selectedSlot = if (selectingMovement) units.firstOrNull { it.address == active }?.slot else null,
-                mapProcLock = map.lock, activeProcScripts = scripts)
+                mapProcLock = map?.lock, activeProcScripts = scripts, convoy = convoy)
         } catch (failure: IllegalArgumentException) {
             FeBattleSnapshot(stamp, FeScene.INVALID, "当前状态无法可靠解析：${failure.message ?: "缺失内存或结构无效"}")
         }

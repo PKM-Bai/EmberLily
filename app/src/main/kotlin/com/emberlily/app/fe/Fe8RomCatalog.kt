@@ -69,14 +69,16 @@ class FeRomCatalog private constructor(val profile: RomProfile, private val rom:
     fun recordName(address: Long): FeName = name(u16(address))
 
     fun item(raw: Int, slot: Int): FeItemSlot {
-        require(raw in 0..65535 && slot in 0..4)
+        require(raw in 0..65535 && slot in 0..99)
         val id = raw and 255
         if (id == 0) return FeItemSlot(slot, raw, 0, 0, FeName(0, "空"), null)
         val address = layout.itemTable + id * layout.itemSize
         if (!contains(address, layout.itemSize) || u8(address + 6) != id) {
             return FeItemSlot(slot, raw, id, raw ushr 8, FeName(0, null, "未识别物品 #$id"), null)
         }
-        return FeItemSlot(slot, raw, id, raw ushr 8, recordName(address), u8(address + 0x14))
+        return FeItemSlot(slot, raw, id, raw ushr 8, recordName(address), u8(address + 0x14),
+            FeItemDetails(u8(address + 7), u32(address + 8), u8(address + 0x15), u8(address + 0x16),
+                u8(address + 0x17), u8(address + 0x18), u8(address + 0x19)))
     }
 
     @Synchronized fun name(id: Int): FeName = names.getOrPut(id) {

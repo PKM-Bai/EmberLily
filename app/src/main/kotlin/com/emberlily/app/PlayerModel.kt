@@ -17,6 +17,10 @@ import com.emberlily.app.fe.FeResearchCommands
 import com.emberlily.app.fe.FeCapability
 import com.emberlily.app.fe.RomProfiles
 import com.emberlily.app.fe.FeScene
+import com.emberlily.app.fe.PrepTradeContext
+import com.emberlily.app.fe.PrepTradeRequest
+import com.emberlily.app.fe.PrepTradeCommands
+import com.emberlily.app.fe.PrepTradeRunner
 import com.emberlily.app.graphics.Fe8WideRenderer
 import com.emberlily.app.graphics.GbaVideoSnapshot
 import com.emberlily.app.storage.GameSession
@@ -33,6 +37,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 data class PlayerState(
     val name: String = "尚未打开游戏",
@@ -46,6 +51,8 @@ data class PlayerState(
     val message: String = "选择本地 .gba 文件开始",
     val error: String? = null,
     val hasResearchRecovery: Boolean = false,
+    val prepTrade: PrepTradeContext? = null,
+    val inventoryMessage: String? = null,
 )
 
 data class GameDisplayState(val expandedMap: Boolean = true, val wideActive: Boolean = false, val supportsExpansion: Boolean = false,
@@ -66,6 +73,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
     val companion = companionRuntime.state
     private var frameNumber = 0L
     private val pending = AtomicBoolean(false)
+    private val tradeCancellation = AtomicLong(0)
     private val foreground = AtomicBoolean(false)
     private val prefs = application.getSharedPreferences("player", 0)
     private val displayMutable = MutableStateFlow(GameDisplayState(expandedMap = prefs.getBoolean("expandedMap", true)))
@@ -139,7 +147,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
 
     private fun command(action: () -> Unit) {
         if (!pending.compareAndSet(false, true)) return
-        mutable.value = mutable.value.copy(busy = true, error = null)
+        mutable.value = mutable.value.copy(busy = true, error = null, inventoryMessage = null)
         executor.execute {
             try { action() }
             catch (e: Exception) { mutable.value = mutable.value.copy(error = e.message ?: "操作失败，请重试") }
@@ -280,8 +288,60 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun sampleCompanion() {
-        runCatching { companionRuntime.sample(core, frameNumber) }.onFailure {
+        runCatching {
+            val snapshot = companionRuntime.sample(core, frameNumber)
+            mutable.value = mutable.value.copy(prepTrade = snapshot?.let(PrepTradeCommands::inspect))
+        }.onFailure {
+            mutable.value = mutable.value.copy(prepTrade = null)
             companionRuntime.clear("战局捕获失败：${it.message}")
+        }
+    }
+
+    fun cancelTrade() { tradeCancellation.incrementAndGet() }
+
+    fun tradeItems(request: PrepTradeRequest) {
+        val cancellation = tradeCancellation.get()
+        command {
+            fun report(message: String) {
+                mutable.value = mutable.value.copy(message = message, inventoryMessage = message)
+            }
+            check(core != 0L && foreground.get()) { "请先回到当前游戏" }
+            check(companionRuntime.accepts(request.observed.stamp)) { "交换请求已失效，请重新选择" }
+            val inputRevision = input.idleRevision() ?: error("请先松开实体按键或触摸手柄")
+            val wasPlaying = playing
+            playing = false
+            audio?.pause(); audio?.flush()
+            report("正在通过游戏准备菜单交换物品")
+            var verified = false
+            try {
+                PrepTradeRunner(
+                    capture = { companionRuntime.capture(core, frameNumber, publishContext = false) },
+                    advance = { keys ->
+                        NativeCore.runFrame(core, keys)
+                        frameNumber++
+                        NativeCore.drainAudio(core, samples)
+                    },
+                    interrupted = { tradeCancellation.get() != cancellation || !foreground.get() || input.keys() != 0 || input.revision() != inputRevision },
+                ).execute(request)
+                verified = true
+                NativeCore.releaseKeys(core)
+                companionRuntime.invalidate("物品交换已完成，重新读取", written = true)
+                report("物品已交换，正在保存当前分支续玩状态")
+                try { saveActive() } catch (e: Exception) { error("物品已交换，但续玩状态保存失败：${e.message}") }
+                report("已通过游戏交换物品，并保存当前分支续玩状态")
+            } catch (e: Exception) {
+                report(if (verified) "物品已交换；续玩保存未完成，请检查错误后重新保存"
+                    else "交换未完成确认；自动操作已停止，请检查上屏物品与菜单选择")
+                throw e
+            } finally {
+                // Native menu actions may have partially advanced before cancellation; never claim rollback.
+                try { NativeCore.releaseKeys(core) } catch (e: Exception) { invalidateCore(); throw e }
+                playing = wasPlaying
+                sampleCompanion()
+                if (NativeCore.copyFrame(core, pixels)) publishGameFrame()
+                nextFrame = System.nanoTime()
+                if (playing && foreground.get()) audio?.play()
+            }
         }
     }
 
@@ -359,6 +419,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun closeCore() {
+        mutable.value = mutable.value.copy(prepTrade = null)
         wideRenderer.reset()
         displayMutable.value = displayMutable.value.copy(wideActive = false, supportsExpansion = false, width = 240, height = 160)
         companionRuntime.clear()
@@ -367,7 +428,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
         runCatching { oldAudio?.release() }
         val handle = core
         core = 0L
-        mutable.value = mutable.value.copy(loaded = false, running = false)
+        mutable.value = mutable.value.copy(loaded = false, running = false, prepTrade = null)
         if (handle != 0L) NativeCore.close(handle)
     }
 

@@ -77,6 +77,9 @@ object RomProfiles {
         FeCapability.LIVE_UNITS to available("序章样本中 2 名我方、3 名敌方的部署槽、坐标与 HP 已核验；尚无 NPC、救出、死亡及切章样本"),
         FeCapability.ITEM_DATA to available("静态物品表及序章 5 名单位物品原值已核验；中文名称、全部物品规则与背包操作仍待适配"),
         FeCapability.TEXT_NAMES to CapabilitySupport(SupportState.UNVERIFIED, "此中文构建采用自定义字库；仅显示名称 ID，不能套用日版名称", "docs/FE8J_EVIDENCE.md"),
+        FeCapability.NORMAL_INVENTORY to CapabilitySupport(SupportState.AVAILABLE,
+            "仅原游戏已打开且空闲的准备交换两名角色：完整物品交换/向空位转交；仓库取放、战场与其他准备菜单未开放",
+            "docs/INVENTORY_VALIDATION.md"),
         FeCapability.RESEARCH_EDIT to available("仅 HP 1..最大 HP 的实验分支编辑；已验证序章玩家空闲时编辑、重开、恢复及主进度隔离，其他字段/章节尚待验证"),
     ), nameEncoding = FeNameEncoding.UNVERIFIED_CUSTOM)
 
