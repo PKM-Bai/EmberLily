@@ -64,6 +64,20 @@ adb -s emulator-5554 shell am instrument -w -e class com.emberlily.app.LocalFe7I
 adb -s emulator-5554 shell am instrument -w -e class com.emberlily.app.LocalFe7IntegrationTest -e fe7Integration true -e fe7Target r06 -e fe7ExpectedMap '0,1,13,7,15,10' -e fe7ExpectedUnit '1,3,2,16,16,13,7,1,0' -e fe7ExpectedItems '0x2E01,0x036B,0x036B,0,0' -e fe7Map r06-agent-idle.state -e fe7Dialog r06-agent-04.state -e fe7Movement r06-agent-movement.state com.emberlily.app.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
+## 角色对比布局修复（0.0.5）
+
+2026-11-01 按用户反馈，将对比改为光标单位在左、固定角色在右，HP 和力／技／速／防／抗／运逐行排列。移除 600dp 以下上下堆叠的分支；名称、职业、属性及同槽物品共享对应行，全部内容共同滚动。固定与取消按钮放在能力列表之后。单单位详情及领域解析、引用失效逻辑保持既有行为。
+
+验证使用 API35 x86_64 独立模拟器与 R06 的隔离 UI 分支：
+
+- 2400×1080、420dpi 的横屏中，操作面板约 381dp 宽，浅色主题下两列仍并排，HP 与六项能力可一同查看。
+- 将模拟器调整为 2592×1240、369dpi，右侧操作面板为 1080×1240，与读取到的 Thor 下屏分辨率和密度相同；深色主题、字体比例 1.3 下，界面树核对 HP 与六项能力的左右边界分离、上下边界逐行相同，截图无重叠或截断。此项为模拟器尺寸验证，不替代 Thor 实机反馈。
+- 实际游戏光标从角色槽1移至空地、再移至坐标(2,6)的敌方单位，右侧保持槽1；两侧 HP 分别为20/20、16/16，其他能力也有不同值，未用同一对象假充对比。
+- 空地时左侧显示占位，右侧保持角色；再次固定将右侧替换为当前单位；取消固定恢复单单位详情，均通过实际界面操作与界面树核对。
+- `:app:assembleDebug` 通过，布局静态扫描无报告，`git diff --check` 通过。本次只调整 Compose 呈现，没有重跑上一节的领域与原生核心全套测试。
+
+本地截图与界面树位于忽略目录 `.local/comparison/`。交付包 `.local/releases/EmberLily-0.0.5-m2-preview.apk`，versionCode=5，SHA-256 `6f1c73fda5e5e13833ce3f893bd6800e2612b4b3cf559fe7e6ffd9a608a16347`。
+
 ## 未完成项
 
 正常准备背包尚未实现，M2-03 不关闭。新取得的 FE8 世界地图准备交换样本解决了 M1 原先缺少场景的问题，仍须实现并验证命令本身；FE7 也必须取得自己的同类场景。Thor 新版 FE7 读取、下屏交互、音视频与持续运行还需要实机反馈。M2 目前不视为阶段验收通过。
