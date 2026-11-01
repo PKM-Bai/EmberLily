@@ -92,6 +92,13 @@ class NativeCoreSmokeTest {
         assertFrame(handle, pixels, IDLE_ARGB)
         val firstCounter = counter(handle)
         assertTrue("Diagnostic loop must increment EWRAM", firstCounter > 0)
+        val registers = NativeCore.readVideoRegisters(handle)
+        assertEquals(0x60, registers.size)
+        val displayControl = (registers[0].toInt() and 255) or ((registers[1].toInt() and 255) shl 8)
+        assertEquals("Diagnostic uses GBA bitmap mode 3", 3, displayControl and 7)
+        registers.fill(0)
+        assertEquals(displayControl and 255, NativeCore.readVideoRegisters(handle)[0].toInt() and 255)
+        assertEquals("Video sampling must not advance execution", firstCounter, counter(handle))
         assertEquals("Released A is active-low 1", 1, keys(handle) and 1)
 
         advance(handle, 12, A)
@@ -127,6 +134,7 @@ class NativeCoreSmokeTest {
         expectClosed { NativeCore.copyFrame(handle, pixels) }
         expectClosed { NativeCore.drainAudio(handle, ShortArray(4096)) }
         expectClosed { NativeCore.readMemory(handle, COUNTER_ADDRESS, 4) }
+        expectClosed { NativeCore.readVideoRegisters(handle) }
         expectClosed { NativeCore.saveState(handle, main.stateFile.absolutePath) }
         expectClosed { NativeCore.loadState(handle, main.stateFile.absolutePath) }
         expectClosed { NativeCore.readMemory(Long.MAX_VALUE, COUNTER_ADDRESS, 4) }

@@ -41,6 +41,9 @@ object NativeCore {
      */
     external fun readMemory(handle: Long, address: Long, size: Int): ByteArray
 
+    /** Side-effect-free copy of the 0x60 LCD register bytes; call on the emulation owner between frames. */
+    external fun readVideoRegisters(handle: Long): ByteArray
+
     /**
      * Compares every expected range, then commits all replacements under one core
      * lock without advancing emulation. Returns false on any byte mismatch, with

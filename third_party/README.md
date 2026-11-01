@@ -24,6 +24,8 @@ PokeDaisy 参考提交为 `6fcb8b50f71c214b13149ea1adb7b7f82c1a4e6f`：
 - 选择性参考模拟线程、帧间采样、双屏 Presentation、按键归属及帧缓冲释放经验；具体实现范围见根目录 `NOTICE` 和各实现文件的来源注释。
 - 火纹领域模型、界面和命令服务由 EmberLily 建立，不包含宝可梦数据、DS 模拟器、成就或网络服务依赖。
 
+真实地图扩景另参考 PokeDaisy `f0a630c47f0468e5ab77f1e8ef333d4ea27f8738` 的地图边缘重建、图层对齐校验及原帧保留方法。FE8 图块与单位渲染为独立实现，未复制宝可梦地址表或地图数据。固定来源、FE8J 地址核验与当前覆盖范围见 [地图扩景依据](../docs/WIDESCREEN_EVIDENCE.md)。
+
 必须保留的致谢：
 
 > Based on PokeDaisy by Lidor Itzhari - https://github.com/lidor30/pokedaisy

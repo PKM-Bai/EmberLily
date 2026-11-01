@@ -98,6 +98,22 @@ class CompanionRuntimeTest {
     }
 
     @Test
+    fun perFrameGraphicsCaptureDoesNotStarvePendingSemanticPublication() {
+        runtime.sample(handle, 16)
+        val result = awaitResult()
+        repeat(3) { offset ->
+            advance(1)
+            val graphics = runtime.capture(handle, 17L + offset, publishContext = false)
+            assertEquals(17L + offset, graphics.stamp.frame)
+        }
+        result.invoke()
+        assertEquals("Graphics-only samples must not discard the pending companion result", 1L, runtime.state.value.captured)
+        runtime.sample(handle, 19)
+        awaitResult().invoke()
+        assertEquals(2L, runtime.state.value.captured)
+    }
+
+    @Test
     fun restoringAtAnEarlierFrameRejectsAlreadyCompletedOldWorkerResult() {
         val saved = runtime.capture(handle, 16)
         assertTrue(NativeCore.saveState(handle, main.checkpointFile.absolutePath))

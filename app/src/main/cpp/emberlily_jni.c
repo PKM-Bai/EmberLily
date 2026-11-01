@@ -565,6 +565,22 @@ done:
     return result;
 }
 
+/* Fixed, side-effect-free copy of LCD registers. No emulated bus reads or writes.
+ * The owner captures this beside RAM/VRAM/palette/OAM between the same two frames. */
+JNIEXPORT jbyteArray JNICALL JNI_METHOD(readVideoRegisters)(JNIEnv* env, jobject self, jlong handle) {
+    (void)self;
+    pthread_mutex_lock(&sessions_lock);
+    struct Session* s = find_session(env, handle);
+    jbyteArray result = NULL;
+    if (s) {
+        const struct GBA* gba = s->core->board;
+        result = (*env)->NewByteArray(env, 0x60);
+        if (result) (*env)->SetByteArrayRegion(env, result, 0, 0x60, (const jbyte*)gba->memory.io);
+    }
+    pthread_mutex_unlock(&sessions_lock);
+    return result;
+}
+
 /* Staged input is detached from Java before the core lock is taken. The commit
  * loop contains only comparisons and bounded copies: no JNI calls, allocations,
  * emulation steps or fallible operations can leave a partially applied patch. */

@@ -39,6 +39,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.emberlily.app.emulation.FrameBuffer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -73,6 +76,8 @@ class MainActivity : ComponentActivity(), DisplayManager.DisplayListener, InputM
             Log.w("EmberLilyDisplays", "Player remains on display ${activityDisplayId()}; using single-screen layout")
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        hideSystemBars()
         setContent {
             EmberTheme {
                 val state by player.state.collectAsState()
@@ -84,7 +89,7 @@ class MainActivity : ComponentActivity(), DisplayManager.DisplayListener, InputM
                 }
                 Surface(Modifier.fillMaxSize()) {
                     if (dual) {
-                        GameScreen(state, Modifier.fillMaxSize().systemBarsPadding())
+                        GameScreen(state, Modifier.fillMaxSize())
                     } else {
                         BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding()) {
                             if (maxWidth > maxHeight) Row(Modifier.fillMaxSize()) {
@@ -110,10 +115,6 @@ class MainActivity : ComponentActivity(), DisplayManager.DisplayListener, InputM
                 Text("上屏游戏 · 下屏同行", style = MaterialTheme.typography.titleMedium, color = Color.White)
                 Spacer(Modifier.height(8.dp))
                 Text("打开 GBA 文件，开始你的旅程", style = MaterialTheme.typography.bodyLarge, color = Color(0xFFE0D9CE))
-            }
-            if (state.loaded) Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                TouchKey("↑", 1 shl 6); TouchKey("↓", 1 shl 7); TouchKey("←", 1 shl 5); TouchKey("→", 1 shl 4)
-                TouchKey("B", 2); TouchKey("A", 1)
             }
         }
     }
@@ -174,6 +175,7 @@ class MainActivity : ComponentActivity(), DisplayManager.DisplayListener, InputM
     }
 
     @Composable private fun SessionControls(state: PlayerState, modifier: Modifier) {
+        val displayState by player.gameDisplay.collectAsState()
         Column(modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(if (state.experiment) "实验分支" else "游玩会话", style = MaterialTheme.typography.headlineSmall)
             Text(state.name, style = MaterialTheme.typography.titleMedium)
@@ -184,12 +186,32 @@ class MainActivity : ComponentActivity(), DisplayManager.DisplayListener, InputM
                 enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("继续上次进度") }
             if (state.loaded) {
                 HorizontalDivider()
+                Text("游戏画面", style = MaterialTheme.typography.titleMedium)
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("扩展地图视野", style = MaterialTheme.typography.bodyLarge)
+                        Text(when {
+                            !displayState.expandedMap -> "已关闭，显示完整原画面"
+                            !displayState.supportsExpansion -> "此游戏版本尚未适配扩景，显示完整原画面"
+                            displayState.wideActive -> "正在显示原画面之外的地图"
+                            else -> "等待可扩展的空闲战场，小地图和其他场景保持原画面"
+                        },
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = displayState.expandedMap, onCheckedChange = player::setExpandedMap, enabled = !state.busy)
+                }
+                HorizontalDivider()
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilledTonalButton(onClick = player::togglePause, enabled = !state.busy, modifier = Modifier.weight(1f)) { Text(if (state.running) "暂停" else "继续") }
                     OutlinedButton(onClick = player::save, enabled = !state.busy, modifier = Modifier.weight(1f)) { Text("保存恢复点") }
                 }
                 OutlinedButton(onClick = player::restore, enabled = !state.busy && state.hasState,
                     modifier = Modifier.fillMaxWidth()) { Text("恢复此分支") }
+                Text("触摸手柄", style = MaterialTheme.typography.titleMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TouchKey("↑", 64); TouchKey("↓", 128); TouchKey("←", 32); TouchKey("→", 16)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { TouchKey("B", 2); TouchKey("A", 1) }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { TouchKey("SELECT", 4); TouchKey("START", 8); TouchKey("L", 512); TouchKey("R", 256) }
                 HorizontalDivider()
                 Text("独立实验", style = MaterialTheme.typography.titleMedium)
@@ -337,7 +359,14 @@ class MainActivity : ComponentActivity(), DisplayManager.DisplayListener, InputM
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (!started) return
-        if (!hasFocus) player.input.releaseAll() else updateCompanion()
+        if (!hasFocus) player.input.releaseAll() else { hideSystemBars(); updateCompanion() }
+    }
+
+    private fun hideSystemBars() {
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
     }
 }
 
@@ -345,6 +374,10 @@ private class GameView(context: Context, private val buffer: FrameBuffer) : View
     private val callback: () -> Unit = { postInvalidateOnAnimation() }
     override fun onAttachedToWindow() { super.onAttachedToWindow(); buffer.invalidate = callback }
     override fun onDetachedFromWindow() { if (buffer.invalidate === callback) buffer.invalidate = null; super.onDetachedFromWindow() }
+    override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight)
+        buffer.resizeViewport(width, height)
+    }
     override fun onDraw(canvas: Canvas) = buffer.draw(canvas, width, height)
 }
 

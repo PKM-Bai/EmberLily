@@ -102,13 +102,15 @@ class CompanionRuntime(private val postOwner: (() -> Unit) -> Unit) : AutoClosea
     }
 
     /** Fresh capture is also used by commands; all regions are copied between the same two frames. */
-    fun capture(handle: Long, frame: Long): MemorySnapshot {
+    fun capture(handle: Long, frame: Long, publishContext: Boolean = true): MemorySnapshot {
         val stamp = (base ?: error("当前会话没有快照上下文")).copy(frame = frame)
         val snapshot = MemorySnapshot(stamp, Fe8JLayout.captureRanges.map {
             MemorySegment(it.address, NativeCore.readMemory(handle, it.address, it.length))
         })
-        check(gate.advance(stamp)) { "快照上下文已失效" }
-        lastSnapshot = snapshot
+        if (publishContext) {
+            check(gate.advance(stamp)) { "快照上下文已失效" }
+            lastSnapshot = snapshot
+        }
         return snapshot
     }
 

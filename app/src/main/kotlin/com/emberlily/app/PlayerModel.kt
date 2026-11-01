@@ -15,6 +15,10 @@ import com.emberlily.app.fe.UnitIdentity
 import com.emberlily.app.fe.HpEditRequest
 import com.emberlily.app.fe.Fe8ResearchCommands
 import com.emberlily.app.fe.FeCapability
+import com.emberlily.app.fe.RomProfiles
+import com.emberlily.app.fe.FeScene
+import com.emberlily.app.graphics.Fe8WideRenderer
+import com.emberlily.app.graphics.GbaVideoSnapshot
 import com.emberlily.app.storage.GameSession
 import com.emberlily.app.storage.ImportedRom
 import com.emberlily.app.storage.RomFiles
@@ -44,6 +48,9 @@ data class PlayerState(
     val hasResearchRecovery: Boolean = false,
 )
 
+data class GameDisplayState(val expandedMap: Boolean = true, val wideActive: Boolean = false, val supportsExpansion: Boolean = false,
+    val width: Int = 240, val height: Int = 160)
+
 /** All core and storage operations are serialized with frame execution. */
 class PlayerModel(application: Application) : AndroidViewModel(application) {
     val input = GameInput()
@@ -61,6 +68,9 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
     private val pending = AtomicBoolean(false)
     private val foreground = AtomicBoolean(false)
     private val prefs = application.getSharedPreferences("player", 0)
+    private val displayMutable = MutableStateFlow(GameDisplayState(expandedMap = prefs.getBoolean("expandedMap", true)))
+    val gameDisplay = displayMutable.asStateFlow()
+    private val wideRenderer = Fe8WideRenderer()
     private val romDirectory = File(application.filesDir, "roms")
     private val sessions = SessionStore(File(application.filesDir, "sessions"))
     private val mutable = MutableStateFlow(PlayerState(hasRecent = prefs.contains("rom")))
@@ -87,7 +97,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
         try {
             NativeCore.runFrame(core, input.keys())
             frameNumber++
-            if (NativeCore.copyFrame(core, pixels)) frames.publish(pixels)
+            if (NativeCore.copyFrame(core, pixels)) publishGameFrame()
             val count = NativeCore.drainAudio(core, samples)
             if (count > 0) audio?.write(samples, 0, count, AudioTrack.WRITE_NON_BLOCKING)
             if (frameNumber % 4L == 0L) sampleCompanion()
@@ -98,6 +108,33 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
             input.releaseAll()
             mutable.value = mutable.value.copy(running = false, error = "运行中断：${e.message}")
         }
+    }
+
+    private fun publishGameFrame() {
+        val wide = if (displayMutable.value.expandedMap && rom?.sha256 == RomProfiles.FE8J_VOICE_SHA256 &&
+            companionRuntime.hasContext && companion.value.battle?.scene == FeScene.MAP) runCatching {
+            val ram = companionRuntime.capture(core, frameNumber, publishContext = false)
+            val video = GbaVideoSnapshot(NativeCore.readMemory(core, 0x06000000, 0x18000),
+                NativeCore.readMemory(core, 0x05000000, 0x400), NativeCore.readMemory(core, 0x07000000, 0x400),
+                NativeCore.readVideoRegisters(core))
+            wideRenderer.render(ram, video, pixels, frames.viewportWidth, frames.viewportHeight)
+        }.getOrNull() else { wideRenderer.reset(); null }
+        if (wide == null) frames.publish(pixels) else frames.publish(wide.pixels, wide.width, wide.height)
+        displayMutable.value = displayMutable.value.copy(wideActive = wide != null,
+            width = wide?.width ?: 240, height = wide?.height ?: 160)
+    }
+
+    fun setExpandedMap(enabled: Boolean) = command {
+        wideRenderer.reset()
+        displayMutable.value = displayMutable.value.copy(expandedMap = enabled, wideActive = false, width = 240, height = 160)
+        prefs.edit().putBoolean("expandedMap", enabled).apply()
+        if (core != 0L && NativeCore.copyFrame(core, pixels)) publishGameFrame()
+    }
+
+    private fun clearGameFrame() {
+        wideRenderer.reset()
+        displayMutable.value = displayMutable.value.copy(wideActive = false, width = 240, height = 160)
+        frames.clear()
     }
 
     private fun command(action: () -> Unit) {
@@ -144,13 +181,14 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
         check(next != 0L) { "模拟器无法打开文件，请核对 ROM" }
         core = next
         rom = targetRom
+        displayMutable.value = displayMutable.value.copy(supportsExpansion = targetRom.sha256 == RomProfiles.FE8J_VOICE_SHA256)
         session = target
         try {
             check(ResearchEditor.recoverPending(core, target) || !target.stateFile.isFile || NativeCore.loadState(core, target.stateFile.absolutePath)) {
                 "续玩状态无法读取，原文件已保留；请核对核心版本和会话文件"
             }
         } catch (e: Exception) { invalidateCore(); throw e }
-        frames.clear()
+        clearGameFrame()
         frameNumber = 0L
         runCatching { companionRuntime.open(targetRom, target) }.onFailure {
             companionRuntime.clear("适配资料无法读取：${it.message}")
@@ -220,7 +258,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
         if (companionRuntime.hasContext) companionRuntime.invalidate("已读档，重新读取战局")
         else companionRuntime.open(checkNotNull(rom), target)
         sampleCompanion()
-        frames.clear()
+        clearGameFrame()
         audio?.pause(); audio?.flush(); if (playing) audio?.play()
         nextFrame = System.nanoTime()
         mutable.value = mutable.value.copy(message = if (playing) "已恢复当前分支" else "已恢复当前分支，继续运行后刷新画面")
@@ -282,7 +320,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
         try { ResearchEditor.restore(core, target) } catch (e: Exception) { invalidateCore(); throw e }
         if (companionRuntime.hasContext) companionRuntime.invalidate("已恢复编辑前状态")
         else companionRuntime.open(checkNotNull(rom), target)
-        frames.clear()
+        clearGameFrame()
         sampleCompanion()
         mutable.value = mutable.value.copy(message = "已恢复编辑前状态，游戏保持暂停")
     }
@@ -321,6 +359,8 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun closeCore() {
+        wideRenderer.reset()
+        displayMutable.value = displayMutable.value.copy(wideActive = false, supportsExpansion = false, width = 240, height = 160)
         companionRuntime.clear()
         val oldAudio = audio; audio = null
         runCatching { oldAudio?.pause(); oldAudio?.flush() }
@@ -334,7 +374,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
     private fun invalidateCore() {
         playing = false
         input.releaseAll()
-        frames.clear()
+        clearGameFrame()
         // Do not save an uncertain state over the last good resume or manual checkpoint.
         runCatching { closeCore() }
     }

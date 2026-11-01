@@ -16,7 +16,7 @@ git submodule update --init third_party/mgba
 
 Unix 使用 `./gradlew`。mGBA 固定在 `26b7884bc25a5933960f3cdcd98bac1ae14d42e2`（0.10.5）；没有初始化子模块时，CMake 会给出明确错误。首轮构建需要下载 Gradle 和 Android 依赖，代理由开发者本地配置，不写入项目。
 
-APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。这是 M0 调试构建，尚非 v0.1 发布包。
+APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。这是内部预览构建，尚非 v0.1 发布包。
 
 ## 文件登记
 
@@ -104,5 +104,9 @@ $env:EMBERLILY_FE8_REPLAY_DIR = 'path/to/local/probes'
 ## 双屏与手柄
 
 主显示屏放游戏，副显示屏使用 `Presentation` 放控制面板；没有副屏时自动采用单屏布局。支持 A/B、十字键、左摇杆、L/R、Start/Select，以及键盘 Z/X、方向、Enter/Space。触摸按键也可使用；失去焦点、暂停、设备移除和切换时释放按住状态。
+
+上屏使用沉浸式显示，触摸手柄集中在下屏“会话”页。该页的“扩展地图视野”开关默认开启并保存选择；当前仅 R04 已验证的玩家空闲地图尝试扩展。扩展内容来自实时地图、VRAM 和单位精灵，保留完整原帧；小地图、菜单、动画和未适配构建自动保持原比例。详见 [地图扩景依据与验证](WIDESCREEN_EVIDENCE.md)。
+
+独立大地图仪器测试 `com.emberlily.app.LocalWideMapTest` 使用 `-e wideTest true -e wideState <本地大地图.state>`，源状态位于应用私有 `files/local-probes/`，源 ROM 使用 `targets/r04.gba`。测试在缓存目录复制并运行自己的核心，连续验证 180 帧原画面保留和内存不变，PNG 输出在 `files/local-probes/wide-<状态名>.png`。不打开用户会话。需先用真实游戏流程取得样本，不能用修改地图尺寸的合成状态冒充实机通过。
 
 Thor 验收必须单独记录：从上下两屏启动、下屏触摸后手柄输入、持键时切换/失焦、休眠唤醒、旋转和屏幕重连、游戏内保存、连续运行与音频稳定。Android 模拟器测试不代替这些设备结论。
