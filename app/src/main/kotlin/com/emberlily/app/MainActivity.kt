@@ -52,6 +52,9 @@ class MainActivity : ComponentActivity(), DisplayManager.DisplayListener, InputM
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) player.importRom(uri)
     }
+    private val snapshotPicker = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) player.exportSnapshot(uri)
+    }
     private val displays get() = getSystemService(DisplayManager::class.java)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -142,6 +145,7 @@ class MainActivity : ComponentActivity(), DisplayManager.DisplayListener, InputM
                 }
             }.pointerInput(label) {
                 detectTapGestures(onPress = {
+                    if (player.state.value.busy) return@detectTapGestures
                     player.input.set("touch:$label", bit)
                     try { tryAwaitRelease() } finally { player.input.set("touch:$label", 0) }
                 })
@@ -151,6 +155,25 @@ class MainActivity : ComponentActivity(), DisplayManager.DisplayListener, InputM
     }
 
     @Composable private fun Controls(state: PlayerState, modifier: Modifier) {
+        var tab by remember { mutableIntStateOf(0) }
+        val companion by player.companion.collectAsState()
+        Column(modifier) {
+            if (state.error != null) Text(state.error, color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.bodyMedium)
+            if (state.loaded) TabRow(selectedTabIndex = tab) {
+                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("战场") })
+                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("会话") })
+                Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("研究") })
+            }
+            if (state.loaded && tab == 0) CompanionPanel(companion, player::pinUnit, Modifier.fillMaxWidth().weight(1f))
+            else if (state.loaded && tab == 2) ResearchPanel(state, companion, player::fork, player::editHp, player::restoreResearch,
+                Modifier.fillMaxWidth().weight(1f))
+            else SessionControls(state, Modifier.fillMaxWidth().weight(1f))
+        }
+    }
+
+    @Composable private fun SessionControls(state: PlayerState, modifier: Modifier) {
         Column(modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(if (state.experiment) "实验分支" else "游玩会话", style = MaterialTheme.typography.headlineSmall)
             Text(state.name, style = MaterialTheme.typography.titleMedium)
@@ -174,11 +197,13 @@ class MainActivity : ComponentActivity(), DisplayManager.DisplayListener, InputM
                 OutlinedButton(onClick = player::fork, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("创建实验分支") }
                 if (state.experiment) OutlinedButton(onClick = player::returnToMain, enabled = !state.busy,
                     modifier = Modifier.fillMaxWidth()) { Text("返回主进度") }
+                OutlinedButton(onClick = { snapshotPicker.launch("emberlily-snapshot.elram") }, enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth()) { Text("导出 RAM 快照") }
             }
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             Text(state.error ?: state.message, color = if (state.error == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodyMedium)
-            Text("基础游玩版本 · 火纹信息面板尚未接入", style = MaterialTheme.typography.bodySmall)
+            Text("M1 内部验证版 · 按具体构建核验火纹能力", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { player.input.releaseAll(); showLicenses = true }) { Text("关于与开源许可") }
         }
     }

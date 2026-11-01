@@ -21,6 +21,7 @@ samples/local/
 *.ss
 *.state
 *.state[0-9]*
+*.elram
 
 # Deliberately authored, redistributable test fixtures may be tracked here.
 # Do not ignore *.bin globally: synthetic decoder fixtures are source inputs.

@@ -76,7 +76,30 @@ adb shell am instrument -w -e class com.emberlily.app.emulation.NativeCoreSmokeT
 
 `resume.state` 为 EmberLily `ELSTATE2` 格式，含 mGBA 状态、电池存档及 RTC，不是可直接导入其他模拟器的 `.ss0`。头部绑定完整 ROM 的 SHA-256、长度及核心版本/固定提交；早期测试 v1 状态明确拒绝。本阶段不保证跨核心版本、跨架构状态兼容；恢复前校验身份和状态内容，失败保留原恢复点。若底层恢复和回滚同时失败，关闭该核心并从保留的恢复点重新打开；不把不确定状态保存覆盖恢复点。原子替换用于避免进程中断留下半份文件，不承诺突然断电时的全部文件系统持久性。
 
-模拟、音频采样、存档和帧间任务由唯一线程串行执行。画面复制到宿主缓冲区，不向 UI 暴露 native 指针。`readMemory` 限定读取区域和长度，没有公开任意写内存接口；M1 再建立火纹 profile 和受控命令服务。
+模拟、音频采样、存档和帧间任务由唯一线程串行执行。画面复制到宿主缓冲区，不向 UI 暴露 native 指针。`readMemory` 限定读取区域和长度；M1 的 `compareAndWriteMemory` 是有界 RAM 原子事务，UI 仅通过已验证的语义命令使用，不能直接输入地址写内存。
+
+## M1 快照、实验与本地验证
+
+R04 的战场页显示光标单位及物品，支持固定另一个单位对比。中文名称尚未建立自定义字库映射，使用文本 ID 表示；R03 实时战局未验收，界面不会套用 R04 的运行验证。研究页先创建独立实验，再在玩家回合的空闲地图编辑 HP（1..最大 HP）。选择移动、事件或动画期间会拒绝写入；成功后保持暂停，并提示前后值。恢复入口还原 `research-before.state`，不覆盖用户手动的 `checkpoint.state`。
+
+研究写入使用候选恢复点和 `research-incomplete` 标记；未完成事务在下次打开时优先恢复候选／编辑前状态，再更新续玩文件。`research.jsonl` 的 `unit_hp` / `stage=memory_applied` 记录实际应用过的字段变化，不代表此后从未回滚；恢复单独记录。日志故障不能阻止数据恢复，日志不是当前状态的真值。
+
+会话页的“导出 RAM 快照”保存 `ELSNAP1`（扩展名 `.elram`），包含 EWRAM/IWRAM、ROM SHA、会话／分支／epoch／frame／revision 和适配器版本，以及完整性摘要。它不含 ROM，不是可运行的即时存档。离线工具使用 `SnapshotCodec.decode` 与 `SnapshotReplay`；应用目前没有导入回放 UI。真实 RAM 和状态文件仅放 `.local/` 或 `samples/local/`，不得提交。
+
+完整 JVM 测试的本地输入（路径由开发者自行提供）：
+
+```powershell
+$env:EMBERLILY_FE8J_ROM = 'path/to/R03.gba'
+$env:EMBERLILY_FE8J_VOICE_ROM = 'path/to/R04.gba'
+$env:EMBERLILY_FE8_REPLAY_DIR = 'path/to/local/probes'
+.\gradlew.bat :app:testDebugUnitTest
+```
+
+没有这些输入时两个本地集成测试明确跳过；其余合成测试正常运行。固定真实样本摘要见测试代码及 [FE8J 证据](FE8J_EVIDENCE.md)。
+
+新增设备测试使用独立缓存会话：`MemoryTransactionTest`（emulation 包）、`CompanionRuntimeTest`、`LocalFe8SceneTest`、`LocalResearchEditorTest`。后两项需要显式 `-e fe8SceneTest true` / `-e fe8ResearchTest true`，默认文件为外部 `targets/r04.gba` 与内部 `files/local-probes/r04-02/07/08/09.state`；缺配置不伪造通过。调用方式沿用上节 `am instrument` 并指定目标设备。
+
+`emulation.LocalFe8ProbeTest` 用于在独立核心通过原生输入采集样本。必填参数 `probeRom=r04.gba`、`probeKeys=0:120,8:2,0:120`、`probeOutput=unique-prefix`；可选 `probeState=probes/previous.state`。按键掩码为十进制，最多 120 段／36000 帧，接受 R03/R04 精确指纹。输出位于应用私有 `files/local-probes/`，包括截图、RAM、ELSTATE2 和来源／输入／产物摘要清单，不覆盖同名文件。通过 `adb exec-out run-as com.emberlily.app cat files/local-probes/<file>` 以二进制方式取回。该工具只在调试测试 APK 中存在，不访问用户主进度。
 
 ## 双屏与手柄
 

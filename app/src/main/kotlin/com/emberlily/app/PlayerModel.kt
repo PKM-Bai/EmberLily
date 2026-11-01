@@ -10,6 +10,11 @@ import androidx.lifecycle.AndroidViewModel
 import com.emberlily.app.emulation.FrameBuffer
 import com.emberlily.app.emulation.GameInput
 import com.emberlily.app.emulation.NativeCore
+import com.emberlily.app.fe.SnapshotCodec
+import com.emberlily.app.fe.UnitIdentity
+import com.emberlily.app.fe.HpEditRequest
+import com.emberlily.app.fe.Fe8ResearchCommands
+import com.emberlily.app.fe.FeCapability
 import com.emberlily.app.storage.GameSession
 import com.emberlily.app.storage.ImportedRom
 import com.emberlily.app.storage.RomFiles
@@ -20,6 +25,8 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.concurrent.ScheduledThreadPoolExecutor
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -34,6 +41,7 @@ data class PlayerState(
     val hasRecent: Boolean = false,
     val message: String = "选择本地 .gba 文件开始",
     val error: String? = null,
+    val hasResearchRecovery: Boolean = false,
 )
 
 /** All core and storage operations are serialized with frame execution. */
@@ -41,6 +49,15 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
     val input = GameInput()
     val frames = FrameBuffer()
     private val executor = ScheduledThreadPoolExecutor(1).apply { removeOnCancelPolicy = true }
+    private val exports = Executors.newSingleThreadExecutor()
+    private val exporting = AtomicBoolean(false)
+    private val companionRuntime = CompanionRuntime { work ->
+        try { executor.execute(work) } catch (e: RejectedExecutionException) {
+            if (!executor.isShutdown) throw e
+        }
+    }
+    val companion = companionRuntime.state
+    private var frameNumber = 0L
     private val pending = AtomicBoolean(false)
     private val foreground = AtomicBoolean(false)
     private val prefs = application.getSharedPreferences("player", 0)
@@ -69,10 +86,14 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
         nextFrame = maxOf(nextFrame + 16_742_706L, now - 16_742_706L)
         try {
             NativeCore.runFrame(core, input.keys())
+            frameNumber++
             if (NativeCore.copyFrame(core, pixels)) frames.publish(pixels)
             val count = NativeCore.drainAudio(core, samples)
             if (count > 0) audio?.write(samples, 0, count, AudioTrack.WRITE_NON_BLOCKING)
+            if (frameNumber % 4L == 0L) sampleCompanion()
+            companionRuntime.recordFrame(System.nanoTime() - now)
         } catch (e: Exception) {
+            companionRuntime.clear("游戏已中断，请恢复进度后重新读取")
             playing = false
             input.releaseAll()
             mutable.value = mutable.value.copy(running = false, error = "运行中断：${e.message}")
@@ -113,6 +134,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun open(targetRom: ImportedRom, target: GameSession) {
+        companionRuntime.clear("正在切换游戏会话")
         playing = false
         input.releaseAll()
         saveActive()
@@ -124,11 +146,16 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
         rom = targetRom
         session = target
         try {
-            check(!target.stateFile.isFile || NativeCore.loadState(core, target.stateFile.absolutePath)) {
+            check(ResearchEditor.recoverPending(core, target) || !target.stateFile.isFile || NativeCore.loadState(core, target.stateFile.absolutePath)) {
                 "续玩状态无法读取，原文件已保留；请核对核心版本和会话文件"
             }
         } catch (e: Exception) { invalidateCore(); throw e }
         frames.clear()
+        frameNumber = 0L
+        runCatching { companionRuntime.open(targetRom, target) }.onFailure {
+            companionRuntime.clear("适配资料无法读取：${it.message}")
+        }
+        sampleCompanion()
         audio = runCatching {
             val format = AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                 .setSampleRate(32768).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build()
@@ -144,7 +171,8 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
         playing = true
         mutable.value = PlayerState(targetRom.name, true, foreground.get(), true, target.id != "main",
             if (target.id == "main") "主进度" else target.label, target.checkpointFile.isFile, true,
-            if (audio == null) "游戏已打开，当前设备音频不可用" else "游戏已打开")
+            if (audio == null) "游戏已打开，当前设备音频不可用" else "游戏已打开",
+            hasResearchRecovery = target.id != "main" && ResearchEditor.checkpoint(target).isFile)
     }
 
     private fun saveActive(manualCheckpoint: Boolean = false) {
@@ -189,6 +217,9 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
         val restored = try { NativeCore.loadState(core, target.checkpointFile.absolutePath) }
             catch (e: Exception) { invalidateCore(); throw e }
         check(restored) { "恢复失败，当前状态与原文件已保留" }
+        if (companionRuntime.hasContext) companionRuntime.invalidate("已读档，重新读取战局")
+        else companionRuntime.open(checkNotNull(rom), target)
+        sampleCompanion()
         frames.clear()
         audio?.pause(); audio?.flush(); if (playing) audio?.play()
         nextFrame = System.nanoTime()
@@ -210,6 +241,73 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
         mutable.value = mutable.value.copy(message = "已返回主进度，实验分支保留")
     }
 
+    private fun sampleCompanion() {
+        runCatching { companionRuntime.sample(core, frameNumber) }.onFailure {
+            companionRuntime.clear("战局捕获失败：${it.message}")
+        }
+    }
+
+    fun pinUnit(identity: UnitIdentity?) { executor.execute { companionRuntime.pin(identity) } }
+
+    fun editHp(request: HpEditRequest) = command {
+        val target = session ?: error("请先打开游戏")
+        check(target.id != "main") { "请先创建独立实验分支" }
+        check(companion.value.profile?.supports(FeCapability.RESEARCH_EDIT) == true) { "当前构建的研究写入尚未通过验证" }
+        check(companionRuntime.accepts(request.observedStamp) && companion.value.battle?.units?.any {
+            it.identity == request.identity
+        } == true) { "所选单位已失效，请重新选择" }
+        val snapshot = companionRuntime.capture(core, frameNumber)
+        val plan = Fe8ResearchCommands.planHp(request, snapshot, companionRuntime.decodeFresh(snapshot))
+        playing = false
+        input.releaseAll()
+        audio?.pause(); audio?.flush()
+        try { ResearchEditor.editHp(core, target, snapshot, plan) }
+        catch (e: Exception) {
+            // The storage layer attempted rollback; close without autosaving any uncertain live state.
+            invalidateCore()
+            throw e
+        }
+        companionRuntime.invalidate("研究编辑已完成，重新读取", written = true)
+        sampleCompanion()
+        mutable.value = mutable.value.copy(message = "实验 HP：${plan.beforeHp} → ${plan.afterHp}；已暂停，可恢复编辑前状态",
+            hasResearchRecovery = true)
+    }
+
+    fun restoreResearch() = command {
+        val target = session ?: error("请先打开游戏")
+        check(core != 0L && target.id != "main" && ResearchEditor.checkpoint(target).isFile) { "当前实验没有编辑前恢复点" }
+        playing = false
+        input.releaseAll()
+        audio?.pause(); audio?.flush()
+        try { ResearchEditor.restore(core, target) } catch (e: Exception) { invalidateCore(); throw e }
+        if (companionRuntime.hasContext) companionRuntime.invalidate("已恢复编辑前状态")
+        else companionRuntime.open(checkNotNull(rom), target)
+        frames.clear()
+        sampleCompanion()
+        mutable.value = mutable.value.copy(message = "已恢复编辑前状态，游戏保持暂停")
+    }
+
+    fun exportSnapshot(uri: Uri) = command {
+        check(core != 0L) { "请先打开游戏" }
+        val capture = companionRuntime.capture(core, frameNumber)
+        check(exporting.compareAndSet(false, true)) { "上一个快照仍在导出，请稍候" }
+        mutable.value = mutable.value.copy(message = "正在导出 RAM 快照")
+        exports.execute {
+            val result = runCatching {
+                getApplication<Application>().contentResolver.openOutputStream(uri, "wt")?.use {
+                    it.write(SnapshotCodec.encode(capture))
+                } ?: error("无法写入所选位置，请重新选择")
+            }
+            exporting.set(false)
+            try { executor.execute {
+                if (companionRuntime.accepts(capture.stamp)) {
+                    mutable.value = mutable.value.copy(message = if (result.isSuccess) "已导出所选分支的 RAM 快照（不含 ROM）"
+                        else "快照导出失败，请重新选择保存位置", error = mutable.value.error ?: result.exceptionOrNull()?.message)
+                }
+            } } catch (e: RejectedExecutionException) { if (!executor.isShutdown) throw e }
+        }
+    }
+
     fun foreground(active: Boolean) {
         foreground.set(active)
         if (!active) input.releaseAll()
@@ -223,6 +321,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun closeCore() {
+        companionRuntime.clear()
         val oldAudio = audio; audio = null
         runCatching { oldAudio?.pause(); oldAudio?.flush() }
         runCatching { oldAudio?.release() }
@@ -242,7 +341,8 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         foreground.set(false)
-        executor.execute { runCatching { saveActive() }; closeCore() }
+        executor.execute { try { runCatching { saveActive() }; closeCore() } finally { companionRuntime.close() } }
         executor.shutdown()
+        exports.shutdown()
     }
 }
