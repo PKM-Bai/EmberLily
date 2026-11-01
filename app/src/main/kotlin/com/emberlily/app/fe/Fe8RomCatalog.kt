@@ -40,10 +40,11 @@ object Fe8JLayout {
 }
 
 /** Stores no distributable game data; bytes are supplied from a fingerprinted local ROM at runtime. */
-class Fe8RomCatalog private constructor(val profile: RomProfile, private val rom: ByteArray) {
+class FeRomCatalog private constructor(val profile: RomProfile, private val rom: ByteArray) {
+    private val layout = profile.layout
     private val names = mutableMapOf<Int, FeName>()
-    private val treeBase = u32(0x080006E0)
-    private val treeRoot = u32(u32(0x080006DC))
+    private val treeBase = u32(layout.huffmanBaseLiteral)
+    private val treeRoot = u32(u32(layout.huffmanRootLiteral))
 
     fun contains(address: Long, size: Int): Boolean = address >= 0x08000000L && size > 0 &&
         address - 0x08000000L <= rom.size.toLong() - size
@@ -52,17 +53,17 @@ class Fe8RomCatalog private constructor(val profile: RomProfile, private val rom
     fun u32(address: Long): Long { require(contains(address, 4)); return (0..3).fold(0L) { all, i -> all or (u8(address + i).toLong() shl (8 * i)) } }
 
     fun characterId(address: Long): Int {
-        require(address >= Fe8JLayout.CHARACTER_TABLE && (address - Fe8JLayout.CHARACTER_TABLE) % Fe8JLayout.CHARACTER_SIZE == 0L)
-        val record = ((address - Fe8JLayout.CHARACTER_TABLE) / Fe8JLayout.CHARACTER_SIZE).toInt()
-        require(record in 0..254 && contains(address, Fe8JLayout.CHARACTER_SIZE))
-        return u8(address + 4).also { require(it == record + 1) { "Character table identity mismatch" } }
+        require(address >= layout.characterTable && (address - layout.characterTable) % layout.characterSize == 0L)
+        val record = ((address - layout.characterTable) / layout.characterSize).toInt()
+        require(record in 0..254 && contains(address, layout.characterSize))
+        return u8(address + 4).also { require(it == record + layout.characterFirstId) { "Character table identity mismatch" } }
     }
 
     fun classId(address: Long): Int {
-        require(address >= Fe8JLayout.CLASS_TABLE && (address - Fe8JLayout.CLASS_TABLE) % Fe8JLayout.CLASS_SIZE == 0L)
-        val record = ((address - Fe8JLayout.CLASS_TABLE) / Fe8JLayout.CLASS_SIZE).toInt()
-        require(record in 0..255 && contains(address, Fe8JLayout.CLASS_SIZE))
-        return u8(address + 4).also { require(it == record) { "Class table identity mismatch" } }
+        require(address >= layout.classTable && (address - layout.classTable) % layout.classSize == 0L)
+        val record = ((address - layout.classTable) / layout.classSize).toInt()
+        require(record in 0..255 && contains(address, layout.classSize))
+        return u8(address + 4).also { require(it == record + layout.classFirstId) { "Class table identity mismatch" } }
     }
 
     fun recordName(address: Long): FeName = name(u16(address))
@@ -71,8 +72,8 @@ class Fe8RomCatalog private constructor(val profile: RomProfile, private val rom
         require(raw in 0..65535 && slot in 0..4)
         val id = raw and 255
         if (id == 0) return FeItemSlot(slot, raw, 0, 0, FeName(0, "空"), null)
-        val address = Fe8JLayout.ITEM_TABLE + id * Fe8JLayout.ITEM_SIZE
-        if (!contains(address, Fe8JLayout.ITEM_SIZE) || u8(address + 6) != id) {
+        val address = layout.itemTable + id * layout.itemSize
+        if (!contains(address, layout.itemSize) || u8(address + 6) != id) {
             return FeItemSlot(slot, raw, id, raw ushr 8, FeName(0, null, "未识别物品 #$id"), null)
         }
         return FeItemSlot(slot, raw, id, raw ushr 8, recordName(address), u8(address + 0x14))
@@ -80,7 +81,7 @@ class Fe8RomCatalog private constructor(val profile: RomProfile, private val rom
 
     @Synchronized fun name(id: Int): FeName = names.getOrPut(id) {
         if (id == 0) FeName(0, null, "无名称")
-        else if (profile.identity.sha256 == RomProfiles.FE8J_VOICE_SHA256) FeName(id, null, "此中文构建的自定义字库映射尚未解析")
+        else if (profile.nameEncoding == FeNameEncoding.UNVERIFIED_CUSTOM) FeName(id, null, "此中文构建的自定义字库映射尚未解析")
         else runCatching {
             val bytes = decodeNameBytes(id)
             require(bytes.isNotEmpty() && bytes.none { (it.toInt() and 255) < 0x20 }) { "Name contains unparsed text commands" }
@@ -92,7 +93,7 @@ class Fe8RomCatalog private constructor(val profile: RomProfile, private val rom
 
     private fun decodeNameBytes(id: Int): ByteArray {
         require(id in 1..65535)
-        val encodedPointer = u32(Fe8JLayout.TEXT_TABLE + id * 4L)
+        val encodedPointer = u32(layout.textTable + id * 4L)
         val output = ArrayList<Byte>(64)
         if (encodedPointer and 0x80000000L != 0L) {
             val address = encodedPointer and 0x7FFFFFFFL
@@ -123,13 +124,17 @@ class Fe8RomCatalog private constructor(val profile: RomProfile, private val rom
     }
 
     companion object {
-        fun load(profile: RomProfile, romBytes: ByteArray): Fe8RomCatalog {
-            require(profile.identity.sha256 in setOf(RomProfiles.FE8J_SHA256, RomProfiles.FE8J_VOICE_SHA256))
+        fun load(profile: RomProfile, romBytes: ByteArray): FeRomCatalog {
+            require(RomProfiles.identify(profile.identity.sha256)?.let { it.id == profile.id && it.version == profile.version &&
+                it.identity == profile.identity && it.layout == profile.layout && it.nameEncoding == profile.nameEncoding } == true) { "Unregistered ROM adapter" }
             require(romBytes.size == profile.identity.size) { "ROM size does not match profile" }
             val copy = romBytes.copyOf()
             val sha = MessageDigest.getInstance("SHA-256").digest(copy).joinToString("") { "%02x".format(it.toInt() and 255) }
             require(sha == profile.identity.sha256) { "ROM bytes do not match profile" }
-            return Fe8RomCatalog(profile, copy)
+            return FeRomCatalog(profile, copy)
         }
     }
 }
+
+/** Source compatibility for the M1 host and replay tools. */
+typealias Fe8RomCatalog = FeRomCatalog

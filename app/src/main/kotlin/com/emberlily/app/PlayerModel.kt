@@ -13,7 +13,7 @@ import com.emberlily.app.emulation.NativeCore
 import com.emberlily.app.fe.SnapshotCodec
 import com.emberlily.app.fe.UnitIdentity
 import com.emberlily.app.fe.HpEditRequest
-import com.emberlily.app.fe.Fe8ResearchCommands
+import com.emberlily.app.fe.FeResearchCommands
 import com.emberlily.app.fe.FeCapability
 import com.emberlily.app.fe.RomProfiles
 import com.emberlily.app.fe.FeScene
@@ -295,7 +295,7 @@ class PlayerModel(application: Application) : AndroidViewModel(application) {
             it.identity == request.identity
         } == true) { "所选单位已失效，请重新选择" }
         val snapshot = companionRuntime.capture(core, frameNumber)
-        val plan = Fe8ResearchCommands.planHp(request, snapshot, companionRuntime.decodeFresh(snapshot))
+        val plan = FeResearchCommands.planHp(request, snapshot, companionRuntime.decodeFresh(snapshot))
         playing = false
         input.releaseAll()
         audio?.pause(); audio?.flush()

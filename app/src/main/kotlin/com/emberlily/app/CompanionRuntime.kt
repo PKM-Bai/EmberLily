@@ -30,7 +30,7 @@ data class CompanionState(
 
 /** Called by the emulation owner only. Workers consume copies and never touch the core. */
 class CompanionRuntime(private val postOwner: (() -> Unit) -> Unit) : AutoCloseable {
-    private data class Adapter(val profile: RomProfile, val catalog: Fe8RomCatalog, val decoder: Fe8Decoder)
+    private data class Adapter(val profile: RomProfile, val catalog: FeRomCatalog, val decoder: FeDecoder)
     private data class Job(val snapshot: MemorySnapshot, val adapter: Adapter?, val started: Long, val captureMs: Double)
     private val worker = Executors.newSingleThreadExecutor()
     private val queued = AtomicReference<Job?>(null)
@@ -55,8 +55,8 @@ class CompanionRuntime(private val postOwner: (() -> Unit) -> Unit) : AutoClosea
         clear("正在读取适配资料")
         val profile = RomProfiles.identify(rom.sha256)
         adapter = profile?.let {
-            val catalog = Fe8RomCatalog.load(it, rom.file.readBytes())
-            Adapter(it, catalog, Fe8Decoder(it, catalog))
+            val catalog = FeRomCatalog.load(it, rom.file.readBytes())
+            Adapter(it, catalog, FeDecoder(it, catalog))
         }
         base = SnapshotStamp(rom.sha256, UUID.randomUUID().toString(), session.id, 0, 0, 0,
             profile?.id ?: "gba-raw", profile?.version ?: 1)
@@ -104,7 +104,7 @@ class CompanionRuntime(private val postOwner: (() -> Unit) -> Unit) : AutoClosea
     /** Fresh capture is also used by commands; all regions are copied between the same two frames. */
     fun capture(handle: Long, frame: Long, publishContext: Boolean = true): MemorySnapshot {
         val stamp = (base ?: error("当前会话没有快照上下文")).copy(frame = frame)
-        val snapshot = MemorySnapshot(stamp, Fe8JLayout.captureRanges.map {
+        val snapshot = MemorySnapshot(stamp, GbaRamCapture.ranges.map {
             MemorySegment(it.address, NativeCore.readMemory(handle, it.address, it.length))
         })
         if (publishContext) {
@@ -117,7 +117,7 @@ class CompanionRuntime(private val postOwner: (() -> Unit) -> Unit) : AutoClosea
     /** Commands use a separate tracker and compare semantic fields again; never call the worker's decoder. */
     fun decodeFresh(snapshot: MemorySnapshot): FeBattleSnapshot {
         val current = adapter ?: error("当前构建尚未适配")
-        return Fe8Decoder(current.profile, current.catalog).decode(snapshot)
+        return FeDecoder(current.profile, current.catalog).decode(snapshot)
     }
 
     fun sample(handle: Long, frame: Long) {

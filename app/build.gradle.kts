@@ -12,8 +12,8 @@ android {
         applicationId = "com.emberlily.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.0.3-wide-preview"
+        versionCode = 4
+        versionName = "0.0.4-m2-preview"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {

@@ -36,7 +36,7 @@ fun CompanionPanel(state: CompanionState, pin: (UnitIdentity?) -> Unit, modifier
             Text("章节 #${battle.chapter} · 回合 ${battle.turn} · $phase", style = MaterialTheme.typography.titleMedium)
             Text("光标 ${battle.cursor?.x ?: "—"}, ${battle.cursor?.y ?: "—"} · 已解析 ${battle.units.size} 个单位",
                 style = MaterialTheme.typography.bodyMedium)
-            if (state.profile.identity.sha256 == RomProfiles.FE8J_VOICE_SHA256) {
+            if (state.profile.nameEncoding == FeNameEncoding.UNVERIFIED_CUSTOM) {
                 Text("此中文构建的名称暂以文本编号显示。", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

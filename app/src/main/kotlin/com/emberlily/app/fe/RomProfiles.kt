@@ -35,6 +35,8 @@ class RomProfile(
     val version: Int,
     val identity: RomIdentity,
     capabilities: Map<FeCapability, CapabilitySupport>,
+    val layout: FeLayout = FeLayouts.fe8j,
+    val nameEncoding: FeNameEncoding = FeNameEncoding.SHIFT_JIS,
 ) {
     val capabilities: Map<FeCapability, CapabilitySupport> = Collections.unmodifiableMap(capabilities.toMap())
     init {
@@ -47,10 +49,20 @@ class RomProfile(
 object RomProfiles {
     const val FE8J_SHA256 = "44fd343625ab9e6b90f63a80758c15066d526e6873fae91474006314a5ead464"
     const val FE8J_VOICE_SHA256 = "4853c904c1c180f837678f3d0032dbbb86049bc710fb1993fb51bad8c49b1076"
+    const val FE7J_SHA256 = "7ec691a7411864ab51765028156c5b8a3c23a317d23c95fbf07ac201212e25c0"
+    const val FE7J_CHINESE_SHA256 = "828b8bb1bff54a66b89cb1e43901d88bb783a4da6e543ac31aa6edc17e162d25"
     private fun pending() = FeCapability.entries.associateWith {
         CapabilitySupport(SupportState.UNVERIFIED, "文件已登记，当前能力尚待该构建的布局与运行验证", "docs/M0_TARGETS.md")
     }
     private fun available(explanation: String) = CapabilitySupport(SupportState.AVAILABLE, explanation, "docs/FE8J_EVIDENCE.md; docs/M1_VALIDATION.md")
+    private fun fe7Available(explanation: String) = CapabilitySupport(SupportState.AVAILABLE, explanation,
+        "docs/FE7J_EVIDENCE.md; docs/M2_VALIDATION.md")
+    private fun fe7Runtime() = mapOf(
+        FeCapability.CHAPTER_AND_CURSOR to fe7Available("已核验本构建序章标题、对话、选择与玩家空闲样本；尚非全部章节/路线"),
+        FeCapability.LIVE_UNITS to fe7Available("已核验本构建序章琳及敌军的部署槽、坐标与属性；其他角色和特殊状态仍待验证"),
+        FeCapability.ITEM_DATA to fe7Available("本构建静态物品表及序章单位物品原值已核验；正常背包操作尚未开放"),
+        FeCapability.RESEARCH_EDIT to fe7Available("仅实验分支 HP 1..最大 HP；序章玩家空闲的编辑、重开、恢复与主进度隔离已验证"),
+    )
 
     val fe8j = RomProfile("fe8j-r03", 1, RomIdentity(
         FE8J_SHA256, 16_777_216, "FIREEMBLEM8", "BE8J", "圣魔之光石（日版 R03）",
@@ -66,9 +78,19 @@ object RomProfiles {
         FeCapability.ITEM_DATA to available("静态物品表及序章 5 名单位物品原值已核验；中文名称、全部物品规则与背包操作仍待适配"),
         FeCapability.TEXT_NAMES to CapabilitySupport(SupportState.UNVERIFIED, "此中文构建采用自定义字库；仅显示名称 ID，不能套用日版名称", "docs/FE8J_EVIDENCE.md"),
         FeCapability.RESEARCH_EDIT to available("仅 HP 1..最大 HP 的实验分支编辑；已验证序章玩家空闲时编辑、重开、恢复及主进度隔离，其他字段/章节尚待验证"),
-    ))
+    ), nameEncoding = FeNameEncoding.UNVERIFIED_CUSTOM)
 
-    val all: List<RomProfile> = Collections.unmodifiableList(listOf(fe8j, fe8jVoice))
+    val fe7j = RomProfile("fe7j-r02", 1, RomIdentity(
+        FE7J_SHA256, 16_777_216, "FIREEMBLEM7", "AE7J", "烈火之剑（日版 R02）",
+    ), pending() + fe7Runtime() + mapOf(FeCapability.TEXT_NAMES to fe7Available(
+        "日版 Huffman 名称与实时琳/职业/武器短样本已核验，控制符及长文本仍可能未解析")), layout = FeLayouts.fe7j)
+    val fe7jChinese = RomProfile("fe7j-chinese-r06", 1, RomIdentity(
+        FE7J_CHINESE_SHA256, 16_777_216, "FIREEMBLEM7", "AE7J", "烈火之剑（狼组／火花汉化 R06）",
+    ), pending() + fe7Runtime() + mapOf(FeCapability.TEXT_NAMES to CapabilitySupport(SupportState.UNVERIFIED,
+        "此中文构建的名称编码尚未核验；仅显示名称 ID", "docs/FE7J_EVIDENCE.md")),
+        layout = FeLayouts.fe7j, nameEncoding = FeNameEncoding.UNVERIFIED_CUSTOM)
+
+    val all: List<RomProfile> = Collections.unmodifiableList(listOf(fe8j, fe8jVoice, fe7j, fe7jChinese))
 
     fun identify(sha256: String): RomProfile? = all.firstOrNull { it.identity.sha256 == sha256.lowercase(java.util.Locale.ROOT) }
 }

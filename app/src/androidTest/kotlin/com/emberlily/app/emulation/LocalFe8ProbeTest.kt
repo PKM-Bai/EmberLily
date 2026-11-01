@@ -39,8 +39,8 @@ class LocalFe8ProbeTest {
     fun captureExplicitLocalFe8Probe() {
         val arguments = InstrumentationRegistry.getArguments()
         val argumentNames = listOf("probeRom", "probeKeys", "probeOutput", "probeState")
-        assumeTrue("Local FE8 probe requires explicit runner arguments", argumentNames.any(arguments::containsKey))
-        check(BuildConfig.DEBUG) { "Local FE8 probes require a debug build" }
+        assumeTrue("Local FE probe requires explicit runner arguments", argumentNames.any(arguments::containsKey))
+        check(BuildConfig.DEBUG) { "Local FE probes require a debug build" }
         val romName = required(arguments, "probeRom")
         val scheduleText = required(arguments, "probeKeys")
         val outputPrefix = required(arguments, "probeOutput")
@@ -58,8 +58,9 @@ class LocalFe8ProbeTest {
         val sourceRom = child(targets, romName)
         val romBytes = boundedBytes(sourceRom, 0xC0, 32 * 1024 * 1024)
         val romSha256 = sha256(romBytes)
-        require(romSha256 == RomProfiles.FE8J_SHA256 || romSha256 == RomProfiles.FE8J_VOICE_SHA256) {
-            "Only registered FE8 R03/R04 ROM fingerprints are accepted"
+        require(romSha256 in setOf(RomProfiles.FE8J_SHA256, RomProfiles.FE8J_VOICE_SHA256,
+            RomProfiles.FE7J_SHA256, RomProfiles.FE7J_CHINESE_SHA256)) {
+            "Only registered FE7/FE8 R02/R03/R04/R06 ROM fingerprints are accepted"
         }
         val sourceState = stateName?.let { name ->
             if (name.startsWith("probes/")) {
@@ -141,7 +142,7 @@ class LocalFe8ProbeTest {
             // Copy without replacement. The manifest is last and marks a complete set.
             for (suffix in suffixes) Files.copy(staged.getValue(suffix).toPath(), destinations.getValue(suffix).toPath())
             InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply {
-                putString("stream", "FE8 probe captured: ${destinations.getValue(".json").absolutePath}\n")
+                putString("stream", "FE probe captured: ${destinations.getValue(".json").absolutePath}\n")
             })
         } finally {
             try { if (handle != 0L) NativeCore.close(handle) }
@@ -170,7 +171,7 @@ class LocalFe8ProbeTest {
     }
 
     private fun required(arguments: Bundle, name: String): String =
-        requireNotNull(arguments.getString(name)) { "$name is required when opting in to a local FE8 probe" }
+        requireNotNull(arguments.getString(name)) { "$name is required when opting in to a local FE probe" }
 
     /** Requires one child component and prevents symlink redirection outside its named directory. */
     private fun child(parent: File, name: String): File {

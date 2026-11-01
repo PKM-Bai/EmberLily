@@ -91,15 +91,26 @@ R04 的战场页显示光标单位及物品，支持固定另一个单位对比�
 ```powershell
 $env:EMBERLILY_FE8J_ROM = 'path/to/R03.gba'
 $env:EMBERLILY_FE8J_VOICE_ROM = 'path/to/R04.gba'
-$env:EMBERLILY_FE8_REPLAY_DIR = 'path/to/local/probes'
+$env:EMBERLILY_FE8_REPLAY_DIR = 'path/to/local/fe8-probes'
+$env:EMBERLILY_FE7J_ROM = 'path/to/R02.gba'
+$env:EMBERLILY_FE7J_CHINESE_ROM = 'path/to/R06.gba'
+$env:EMBERLILY_FE7_REPLAY_DIR = 'path/to/local/fe7-probes'
 .\gradlew.bat :app:testDebugUnitTest
 ```
 
-没有这些输入时两个本地集成测试明确跳过；其余合成测试正常运行。固定真实样本摘要见测试代码及 [FE8J 证据](FE8J_EVIDENCE.md)。
+没有相应输入时，本地 ROM／回放测试明确跳过；其余合成测试正常运行。固定真实样本摘要见测试代码、[FE8J 证据](FE8J_EVIDENCE.md) 与 [M2 验证记录](M2_VALIDATION.md)。已有 FE8 回放目录没有新增大地图样本时，只有相关真实扩景用例跳过。
 
 新增设备测试使用独立缓存会话：`MemoryTransactionTest`（emulation 包）、`CompanionRuntimeTest`、`LocalFe8SceneTest`、`LocalResearchEditorTest`。后两项需要显式 `-e fe8SceneTest true` / `-e fe8ResearchTest true`，默认文件为外部 `targets/r04.gba` 与内部 `files/local-probes/r04-02/07/08/09.state`；缺配置不伪造通过。调用方式沿用上节 `am instrument` 并指定目标设备。
 
-`emulation.LocalFe8ProbeTest` 用于在独立核心通过原生输入采集样本。必填参数 `probeRom=r04.gba`、`probeKeys=0:120,8:2,0:120`、`probeOutput=unique-prefix`；可选 `probeState=probes/previous.state`。按键掩码为十进制，最多 120 段／36000 帧，接受 R03/R04 精确指纹。输出位于应用私有 `files/local-probes/`，包括截图、RAM、ELSTATE2 和来源／输入／产物摘要清单，不覆盖同名文件。通过 `adb exec-out run-as com.emberlily.app cat files/local-probes/<file>` 以二进制方式取回。该工具只在调试测试 APK 中存在，不访问用户主进度。
+`emulation.LocalFe8ProbeTest` 保留早期类名，用于在独立核心通过原生输入采集 FE7/FE8 样本。必填参数 `probeRom=r04.gba`、`probeKeys=0:120,8:2,0:120`、`probeOutput=unique-prefix`；可选 `probeState=probes/previous.state`。按键掩码为十进制，最多 120 段／36000 帧，接受 R02/R03/R04/R06 精确指纹。输出位于应用私有 `files/local-probes/`，包括截图、RAM、ELSTATE2 和来源／输入／产物摘要清单，不覆盖同名文件。通过 `adb exec-out run-as com.emberlily.app cat files/local-probes/<file>` 以二进制方式取回。该工具只在调试测试 APK 中存在，不访问用户主进度。
+
+## M2 FE7 预览
+
+R02 日版与 R06 汉化版使用同一战场／会话／研究界面；各自按完整指纹启用已验证的读取与 HP 编辑。日版短名称可显示，汉化版保持文本编号。教学气泡已出现移动范围时，游戏可能还没有进入可操作的移动回调；必须等待游戏自己的流程，不凭残留的 active-unit 指针认定选择，更不能允许研究写入。
+
+`com.emberlily.app.LocalFe7IntegrationTest` 是显式本地验收入口。使用 `-e fe7Integration true -e fe7Target r02` 或 `r06`，并传入独立核对的章节／光标／单位／物品期望值。ROM 放在外部 `targets/`，四份状态放在内部 `files/local-probes/`。测试在自己的缓存目录创建主进度与实验，不打开应用游玩会话；参数、样本摘要和本轮完整命令见 [M2 验证记录](M2_VALIDATION.md)。
+
+原来的 ELSNAP1、ELSTATE2 与会话目录格式没有改变。新的 FE7 适配不改变 FE8 存档归属，也不将《天地之剑》按 AE7J header 自动识别为原版。正常背包和 FE7 图形扩景仍需各自实现与验证。
 
 ## 双屏与手柄
 

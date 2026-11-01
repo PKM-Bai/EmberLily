@@ -225,7 +225,7 @@ class MainActivity : ComponentActivity(), DisplayManager.DisplayListener, InputM
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             Text(state.error ?: state.message, color = if (state.error == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodyMedium)
-            Text("M1 内部验证版 · 按具体构建核验火纹能力", style = MaterialTheme.typography.bodySmall)
+            Text("内部预览版 · 功能按游戏版本启用", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { player.input.releaseAll(); showLicenses = true }) { Text("关于与开源许可") }
         }
     }
