@@ -1,6 +1,6 @@
 # EmberLily 项目方案
 
-确认日期：2026-11-01（Asia/Shanghai）。状态：**方案已确认，M0 阶段验收通过，M1 可启动**。依据包括工程与模拟器验证及用户 Thor 实机反馈；范围见 [M0 验证记录](M0_VALIDATION.md)。
+确认日期：2026-11-01（Asia/Shanghai）。状态：**方案已确认，M0 阶段验收通过，M1 实施中**。依据包括工程与模拟器验证及用户 Thor 实机反馈；范围见 [M0 验证记录](M0_VALIDATION.md)，当前进展见 [M1 验证记录](M1_VALIDATION.md)。
 
 本方案定义 EmberLily 的产品范围、工程边界和交付标准。用户已完成设计访谈并确认整体方案。实现任务见 [分阶段实施任务](IMPLEMENTATION_TASKS.md)，事实依据见 [技术依据与核验边界](TECHNICAL_EVIDENCE.md)。
 

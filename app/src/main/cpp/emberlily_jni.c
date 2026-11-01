@@ -27,6 +27,8 @@
 #define FRAME_PIXELS (240 * 160)
 #define AUDIO_FRAMES 2048
 #define MAX_READ (1024 * 1024)
+#define MAX_PATCHES 64
+#define MAX_PATCH_BYTES (16 * 1024)
 #define MAX_BATTERY (0x20000 + 16)
 #define MAX_STATE (1024 * 1024)
 #define STATE_HEADER 128
@@ -561,6 +563,121 @@ invalid:
 done:
     pthread_mutex_unlock(&sessions_lock);
     return result;
+}
+
+/* Staged input is detached from Java before the core lock is taken. The commit
+ * loop contains only comparisons and bounded copies: no JNI calls, allocations,
+ * emulation steps or fallible operations can leave a partially applied patch. */
+JNIEXPORT jboolean JNICALL JNI_METHOD(compareAndWriteMemory)(JNIEnv* env, jobject self, jlong handle,
+        jlongArray addresses, jobjectArray expected, jobjectArray replacement) {
+    (void)self;
+    struct Patch {
+        uint32_t address;
+        size_t length;
+        size_t offset;
+        uint8_t* destination;
+    } patches[MAX_PATCHES];
+    jlong requested[MAX_PATCHES];
+    uint8_t* staged = NULL;
+    jclass byte_array_type = NULL;
+    bool committed = false;
+    size_t total = 0;
+
+    if (!addresses || !expected || !replacement) goto invalid;
+    jsize count = (*env)->GetArrayLength(env, addresses);
+    if (count <= 0 || count > MAX_PATCHES || (*env)->GetArrayLength(env, expected) != count ||
+        (*env)->GetArrayLength(env, replacement) != count) goto invalid;
+    (*env)->GetLongArrayRegion(env, addresses, 0, count, requested);
+    if ((*env)->ExceptionCheck(env)) goto done;
+    byte_array_type = (*env)->FindClass(env, "[B");
+    if (!byte_array_type) goto done;
+    staged = malloc(MAX_PATCH_BYTES * 2);
+    if (!staged) {
+        throw_exception(env, "java/lang/OutOfMemoryError", "Cannot stage RAM transaction");
+        goto done;
+    }
+
+    for (jsize i = 0; i < count; ++i) {
+        if (requested[i] < 0 || requested[i] > UINT32_MAX) goto invalid;
+        uint32_t address = (uint32_t)requested[i];
+        uint32_t region = address >> 24;
+        size_t capacity;
+        if (region == REGION_WORKING_RAM) capacity = SIZE_WORKING_RAM;
+        else if (region == REGION_WORKING_IRAM) capacity = SIZE_WORKING_IRAM;
+        else goto invalid;
+
+        jbyteArray before = (*env)->GetObjectArrayElement(env, expected, i);
+        if ((*env)->ExceptionCheck(env)) goto done;
+        jbyteArray after = (*env)->GetObjectArrayElement(env, replacement, i);
+        if ((*env)->ExceptionCheck(env)) {
+            if (before) (*env)->DeleteLocalRef(env, before);
+            goto done;
+        }
+        bool valid = before && after && (*env)->IsInstanceOf(env, before, byte_array_type) &&
+            (*env)->IsInstanceOf(env, after, byte_array_type);
+        size_t length = valid ? (size_t)(*env)->GetArrayLength(env, before) : 0;
+        size_t region_offset = address - (region << 24);
+        valid = valid && length > 0 && length == (size_t)(*env)->GetArrayLength(env, after) &&
+            length <= MAX_PATCH_BYTES - total && region_offset < capacity && length <= capacity - region_offset;
+        for (jsize j = 0; valid && j < i; ++j) {
+            valid = (uint64_t)address + length <= patches[j].address ||
+                (uint64_t)patches[j].address + patches[j].length <= address;
+        }
+        if (valid) {
+            patches[i] = (struct Patch){address, length, total, NULL};
+            (*env)->GetByteArrayRegion(env, before, 0, (jsize)length, (jbyte*)(staged + total));
+            if (!(*env)->ExceptionCheck(env)) {
+                (*env)->GetByteArrayRegion(env, after, 0, (jsize)length, (jbyte*)(staged + MAX_PATCH_BYTES + total));
+            }
+            total += length;
+        }
+        if (before) (*env)->DeleteLocalRef(env, before);
+        if (after) (*env)->DeleteLocalRef(env, after);
+        if ((*env)->ExceptionCheck(env)) goto done;
+        if (!valid) goto invalid;
+    }
+
+    pthread_mutex_lock(&sessions_lock);
+    struct Session* s = find_session(env, handle);
+    if (s) {
+        bool matches = true;
+        for (jsize i = 0; i < count; ++i) {
+            uint32_t region = patches[i].address >> 24;
+            size_t available = 0;
+            uint8_t* memory = s->core->getMemoryBlock(s->core, region, &available);
+            size_t offset = patches[i].address - (region << 24);
+            if (!memory || offset > available || patches[i].length > available - offset) {
+                throw_exception(env, "java/lang/IllegalStateException", "RAM transaction backing memory is unavailable");
+                matches = false;
+                break;
+            }
+            patches[i].destination = memory + offset;
+            if (memcmp(patches[i].destination, staged + patches[i].offset, patches[i].length)) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) {
+            for (jsize i = 0; i < count; ++i) {
+                const uint8_t* before = staged + patches[i].offset;
+                const uint8_t* after = staged + MAX_PATCH_BYTES + patches[i].offset;
+                // Equal bytes act as guards without touching the emulated memory.
+                if (memcmp(before, after, patches[i].length)) {
+                    memcpy(patches[i].destination, after, patches[i].length);
+                }
+            }
+            committed = true;
+        }
+    }
+    pthread_mutex_unlock(&sessions_lock);
+    goto done;
+invalid:
+    throw_exception(env, "java/lang/IllegalArgumentException",
+        "RAM transaction requires 1-64 nonoverlapping canonical EWRAM/IWRAM ranges, equal nonzero lengths and at most 16 KiB total");
+done:
+    free(staged);
+    if (byte_array_type) (*env)->DeleteLocalRef(env, byte_array_type);
+    return committed;
 }
 
 JNIEXPORT jstring JNICALL JNI_METHOD(coreVersion)(JNIEnv* env, jobject self) {

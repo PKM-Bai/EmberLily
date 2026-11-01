@@ -41,5 +41,29 @@ object NativeCore {
      */
     external fun readMemory(handle: Long, address: Long, size: Int): ByteArray
 
+    /**
+     * Compares every expected range, then commits all replacements under one core
+     * lock without advancing emulation. Returns false on any byte mismatch, with
+     * no memory changed. Invalid arguments throw IllegalArgumentException; a closed
+     * or poisoned handle throws IllegalStateException.
+     *
+     * Accepts 1-64 nonoverlapping ranges wholly within canonical EWRAM or IWRAM,
+     * at most 16 KiB total. Every expected/replacement pair must have the same
+     * nonzero length. Equal pairs are read-only guards. ROM, IO, save/video buses,
+     * mirrors, zero-length and overlapping ranges are rejected before any write.
+     * Do not mutate the input arrays until this synchronous call returns.
+     *
+     * This primitive establishes byte-level atomicity only. The host must validate
+     * semantic commands, ROM/session/branch and state versions, enforce experiment
+     * permissions where needed, and preserve a recovery point before calling it.
+     * It never invokes game functions or validates game-rule legality.
+     */
+    external fun compareAndWriteMemory(
+        handle: Long,
+        addresses: LongArray,
+        expected: Array<ByteArray>,
+        replacement: Array<ByteArray>,
+    ): Boolean
+
     external fun coreVersion(): String
 }
